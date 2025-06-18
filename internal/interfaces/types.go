@@ -28,4 +28,8 @@ type Cache interface {
 	// key: 缓存键
 	// 返回: 被删除的缓存值和错误信息
 	LoadAndDelete(ctx context.Context, key string) (any, error)
+	
+	// OnEvicted 设置淘汰回调函数
+	// fn: 回调函数，当缓存项被淘汰时调用
+	OnEvicted(fn func(key string, val any))
 }

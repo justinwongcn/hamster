@@ -110,7 +110,7 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 
 	// 并发写测试
 	// 启动100个goroutine并发地向缓存中写入数据
-	for i := range 100 {
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -124,7 +124,7 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 
 	// 并发读测试
 	// 启动100个goroutine并发地从缓存中读取数据
-	for i := range 100 {
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -159,11 +159,11 @@ func TestBuildInMapCache_OnEvicted(t *testing.T) {
 
 	err := c.Set(context.Background(), "key1", "value1", time.Millisecond*10)
 	assert.Nil(t, err)
-	
+
 	// 直接删除键值以触发回调
 	err = c.Delete(context.Background(), "key1")
 	assert.Nil(t, err)
-	
+
 	assert.Equal(t, "key1", evictedKey)
 	assert.Equal(t, "value1", evictedValue)
 }
@@ -172,12 +172,12 @@ func TestBuildInMapCache_OnEvicted(t *testing.T) {
 func TestBuildInMapCache_BackgroundCleanup(t *testing.T) {
 	c := NewBuildInMapCache(time.Millisecond * 100)
 	ctx := context.Background()
-	
+
 	err := c.Set(ctx, "expireKey", "value", time.Millisecond*50)
 	assert.Nil(t, err)
-	
+
 	time.Sleep(time.Millisecond * 200)
-	
+
 	_, err = c.Get(ctx, "expireKey")
 	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "过期缓存项应被后台清理")
 }
