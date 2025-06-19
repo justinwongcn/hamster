@@ -21,12 +21,15 @@ type BuildInMapCacheOption func(cache *BuildInMapCache)
 // BuildInMapCache 基于内置map实现的缓存结构体
 // 该结构体包含了缓存操作所需的核心数据结构和控制元素。
 type BuildInMapCache struct {
-	// data 用于存储缓存项的映射，键为字符串类型，值为指向 item 结构体的指针。
+	// data 存储缓存项的映射，键为字符串类型，值为指向item结构体的指针
+	// 读写操作需通过互斥锁保护以确保并发安全
 	data  map[string]*item
 	mutex sync.RWMutex
-	// close 是一个用于关闭缓存的通道，当向该通道发送信号时，后台的清理 goroutine 会停止运行。
+	// close 用于关闭缓存的通道，发送信号后会停止后台清理goroutine
+	// 重复关闭会返回errDuplicateClose错误
 	close chan struct{}
-	// onEvicted 是一个回调函数，当缓存项因过期或删除操作被移除时会调用该函数。
+	// onEvicted 缓存项被驱逐时的回调函数
+	// 当缓存项因过期、删除或内存淘汰被移除时触发
 	onEvicted func(key string, val any)
 }
 
@@ -44,7 +47,8 @@ func NewBuildInMapCache(interval time.Duration, opts ...BuildInMapCacheOption) *
 		data:  make(map[string]*item, 100),
 		close: make(chan struct{}),
 		onEvicted: func(key string, val any) {
-			// 默认的 onEvicted 回调为空函数，用于避免外部调用时 nil 调用错误。
+			// 默认的onEvicted回调为空函数
+			// 避免外部未设置回调时调用nil函数导致panic
 			// 如需监听驱逐事件，请使用 BuildInMapCacheWithEvictedCallback 配置选项设置具体逻辑。
 		},
 	}
@@ -86,7 +90,7 @@ func NewBuildInMapCache(interval time.Duration, opts ...BuildInMapCacheOption) *
 	return res
 }
 
-// BuildInMapCacheWithEvictedCallback 设置缓存项被驱逐时的回调函数
+// BuildInMapCacheWithEvictedCallback 设置缓存项被删除时的回调函数
 // fn: 回调函数，当缓存项因过期被删除时调用
 func BuildInMapCacheWithEvictedCallback(fn func(key string, val any)) BuildInMapCacheOption {
 	return func(cache *BuildInMapCache) {

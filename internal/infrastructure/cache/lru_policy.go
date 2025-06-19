@@ -23,6 +23,12 @@ func (l *LRUPolicy) KeyAccessed(key string) {
     // 如果key已存在，先移除
     if idx, exists := l.keys[key]; exists {
         l.list.Delete(idx)
+        // 更新后续元素的索引
+        for k, i := range l.keys {
+            if i > idx {
+                l.keys[k] = i - 1
+            }
+        }
     }
     // 将key添加到链表尾部
     l.list.Append(key)
@@ -38,6 +44,12 @@ func (l *LRUPolicy) Evict() string {
     key, _ := l.list.Get(0)
     l.list.Delete(0)
     delete(l.keys, key)
+    // 更新所有元素的索引
+    for k, i := range l.keys {
+        if i > 0 {
+            l.keys[k] = i - 1
+        }
+    }
     return key
 }
 
@@ -46,6 +58,12 @@ func (l *LRUPolicy) Remove(key string) {
     if idx, exists := l.keys[key]; exists {
         l.list.Delete(idx)
         delete(l.keys, key)
+        // 更新后续元素的索引
+        for k, i := range l.keys {
+            if i > idx {
+                l.keys[k] = i - 1
+            }
+        }
     }
 }
 
