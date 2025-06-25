@@ -11,8 +11,8 @@ import (
 const errKeyNotFoundFormat = "%w, key: %s"
 
 var (
-	errKeyNotFound    = errors.New("cache：键不存在")
-	errDuplicateClose = errors.New("重复关闭")
+	ErrCacheKeyNotFound = errors.New("cache：键不存在")
+	ErrDuplicateClose   = errors.New("重复关闭")
 )
 
 // BuildInMapCacheOption 定义缓存配置选项函数类型
@@ -45,7 +45,7 @@ type item struct {
 func NewBuildInMapCache(interval time.Duration, opts ...BuildInMapCacheOption) *BuildInMapCache {
 	res := &BuildInMapCache{
 		data:  make(map[string]*item, 100),
-		close: make(chan struct{}),
+		close: make(chan struct{}), // 用于通知关闭的通道
 		onEvicted: func(key string, val any) {
 			// 默认的onEvicted回调为空函数
 			// 避免外部未设置回调时调用nil函数导致panic
@@ -148,7 +148,7 @@ func (b *BuildInMapCache) Get(_ context.Context, key string) (any, error) {
 
 	// 如果缓存中不存在该键，返回错误。
 	if !ok {
-		return nil, fmt.Errorf(errKeyNotFoundFormat, errKeyNotFound, key)
+		return nil, fmt.Errorf(errKeyNotFoundFormat, ErrCacheKeyNotFound, key)
 	}
 
 	// 获取当前时间，检查缓存项是否已过期。
@@ -159,11 +159,11 @@ func (b *BuildInMapCache) Get(_ context.Context, key string) (any, error) {
 		defer b.mutex.Unlock()
 		res, ok = b.data[key]
 		if !ok {
-			return nil, fmt.Errorf(errKeyNotFoundFormat, errKeyNotFound, key)
+			return nil, fmt.Errorf(errKeyNotFoundFormat, ErrCacheKeyNotFound, key)
 		}
 		if res.deadlineBefore(now) {
 			b.delete(key)
-			return nil, fmt.Errorf(errKeyNotFoundFormat, errKeyNotFound, key)
+			return nil, fmt.Errorf(errKeyNotFoundFormat, ErrCacheKeyNotFound, key)
 		}
 	}
 	// 返回缓存值。
@@ -190,7 +190,7 @@ func (b *BuildInMapCache) LoadAndDelete(_ context.Context, key string) (any, err
 	defer b.mutex.Unlock()
 	val, ok := b.data[key]
 	if !ok {
-		return nil, errKeyNotFound
+		return nil, ErrCacheKeyNotFound
 	}
 	b.delete(key)
 	return val.val, nil
@@ -212,11 +212,21 @@ func (b *BuildInMapCache) delete(key string) {
 // Close 关闭缓存，停止后台清理goroutine
 // 返回: 错误信息，nil表示成功
 // 注意: 重复关闭会返回错误
+// Close 关闭缓存，停止后台清理goroutine
+// 返回: 错误信息，nil表示成功
+// 注意: 重复关闭会返回错误
 func (b *BuildInMapCache) Close() error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
 	select {
-	case b.close <- struct{}{}:
+	case <-b.close:
+		// 如果通道已经被关闭，说明已经调用过Close，直接返回错误
+		return ErrDuplicateClose
 	default:
-		return errDuplicateClose
+		// 尝试关闭通道
+		close(b.close)
 	}
+
 	return nil
 }

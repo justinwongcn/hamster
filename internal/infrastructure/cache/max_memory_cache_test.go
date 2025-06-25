@@ -11,11 +11,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// errNotFound 表示键不存在的错误
 var errNotFound = errors.New("not found")
 
 // TestMaxMemoryCache_Set 测试Set方法
+// 参数:
+//   - t: 测试上下文
+//
+// 功能:
+//   - 验证Set方法在不同场景下的行为
+//
+// 测试用例:
+//   - 内存不足触发淘汰
 func TestMaxMemoryCache_Set(t *testing.T) {
-	var testCases []struct {
+	testCases := []struct {
 		name     string
 		cache    func() *MaxMemoryCache
 		key      string
@@ -23,6 +32,22 @@ func TestMaxMemoryCache_Set(t *testing.T) {
 		wantKeys []string
 		wantErr  error
 		wantUsed int64
+	}{
+		{
+			name: "内存不足触发淘汰",
+			cache: func() *MaxMemoryCache {
+				mock := &mockCache{data: make(map[string]any)}
+				cache := NewMaxMemoryCache(10, mock)
+				cache.policy = NewLRUPolicy()
+				// 预先添加一个将被淘汰的键
+				_ = cache.Set(context.Background(), "oldKey", []byte("oldVal"), time.Minute)
+				return cache
+			},
+			key:      "key2",
+			val:      []byte("value2"), // 6个字节
+			wantKeys: []string{"key2"},
+			wantUsed: 6,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -40,12 +65,45 @@ func TestMaxMemoryCache_Set(t *testing.T) {
 }
 
 // TestMaxMemoryCache_Get 测试Get方法
+// 参数:
+//   - t: 测试上下文
+//
+// 功能:
+//   - 验证Get方法在不同场景下的行为
+//
+// 测试用例:
+//   - 正常获取
+//   - 键不存在
 func TestMaxMemoryCache_Get(t *testing.T) {
-	var testCases []struct {
+	testCases := []struct {
 		name    string
 		cache   func() *MaxMemoryCache
 		key     string
 		wantErr error
+	}{
+		{
+			name: "正常获取",
+			cache: func() *MaxMemoryCache {
+				mock := &mockCache{data: make(map[string]any)}
+				cache := NewMaxMemoryCache(100, mock)
+				cache.policy = NewLRUPolicy()
+				_ = cache.Set(context.Background(), "key1", []byte("value1"), time.Minute)
+				return cache
+			},
+			key:     "key1",
+			wantErr: nil,
+		},
+		{
+			name: "键不存在",
+			cache: func() *MaxMemoryCache {
+				mock := &mockCache{data: make(map[string]any)}
+				cache := NewMaxMemoryCache(100, mock)
+				cache.policy = NewLRUPolicy()
+				return cache
+			},
+			key:     "not_exist",
+			wantErr: errNotFound,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -62,32 +120,87 @@ func TestMaxMemoryCache_Get(t *testing.T) {
 }
 
 // TestMaxMemoryCache_Delete 测试Delete方法
+// 参数:
+//   - t: 测试上下文
+//
+// 功能:
+//   - 验证Delete方法在不同场景下的行为
+//
+// 测试用例:
+//   - 删除存在的key
+//   - 删除不存在的key
 func TestMaxMemoryCache_Delete(t *testing.T) {
-	mock := &mockCache{
-		data: make(map[string]any),
+	testCases := []struct {
+		name      string
+		setup     func() *MaxMemoryCache
+		key       string
+		wantErr   error
+		wantUsed  int64
+		wantExist bool // 检查key是否存在
+	}{{
+		name: "删除存在的key",
+		setup: func() *MaxMemoryCache {
+			mock := &mockCache{data: make(map[string]any)}
+			cache := NewMaxMemoryCache(100, mock)
+			cache.policy = NewLRUPolicy()
+			_ = cache.Set(context.Background(), "key1", []byte("value1"), time.Minute) // 6个字节
+			_ = cache.Set(context.Background(), "key2", []byte("value2"), time.Minute) // 6个字节
+			return cache
+		},
+		key:       "key1",
+		wantErr:   nil,
+		wantUsed:  6, // 只剩key2
+		wantExist: false,
+	}, {
+		name: "删除不存在的key",
+		setup: func() *MaxMemoryCache {
+			mock := &mockCache{data: make(map[string]any)}
+			cache := NewMaxMemoryCache(100, mock)
+			cache.policy = NewLRUPolicy()
+			_ = cache.Set(context.Background(), "key1", []byte("value1"), time.Minute)
+			return cache
+		},
+		key:       "key3",
+		wantErr:   nil,
+		wantUsed:  6,     // 未删除任何键，保持原样
+		wantExist: false, // key3不存在
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := tc.setup()
+			err := cache.Delete(context.Background(), tc.key)
+
+			// 验证错误
+			if tc.wantErr != nil {
+				assert.Equal(t, tc.wantErr, err)
+			} else {
+				assert.Nil(t, err)
+			}
+
+			// 验证内存使用量
+			assert.Equal(t, tc.wantUsed, cache.used)
+
+			// 验证key是否存在
+			_, err = cache.Get(context.Background(), tc.key)
+			if tc.wantExist {
+				assert.NotEqual(t, errNotFound, err)
+			} else {
+				assert.Equal(t, errNotFound, err)
+			}
+		})
 	}
-	cache := NewMaxMemoryCache(100, mock)
-	cache.policy = NewLRUPolicy()
-
-	// 添加测试数据
-	_ = cache.Set(context.Background(), "key1", []byte("value1"), time.Minute)
-	_ = cache.Set(context.Background(), "key2", []byte("value2"), time.Minute)
-
-	// 测试删除存在的key
-	err := cache.Delete(context.Background(), "key1")
-	assert.Nil(t, err)
-	_, err = cache.Get(context.Background(), "key1")
-	assert.Equal(t, errNotFound, err)
-
-	// 测试删除不存在的key
-	err = cache.Delete(context.Background(), "key3")
-	assert.Nil(t, err)
-
-	// 验证内存使用量减少
-	assert.Equal(t, int64(6), cache.used) // "value2"长度为6
 }
 
 // TestMaxMemoryCache_Set_Eviction 测试设置时的淘汰逻辑
+// 参数:
+//   - t: 测试上下文
+// 功能:
+//   - 验证内存不足时自动淘汰最久未使用数据的功能
+// 测试场景:
+//   - 添加多个键值触发淘汰机制
+//   - 验证被淘汰键是否已删除
+//   - 验证剩余键是否保留
 func TestMaxMemoryCache_Set_Eviction(t *testing.T) {
 	mock := &mockCache{
 		data: make(map[string]any),
@@ -124,33 +237,154 @@ func TestMaxMemoryCache_Set_Eviction(t *testing.T) {
 	assert.Equal(t, []byte("val3"), val)
 }
 
-// TestMaxMemoryCache_TypeAssertionFailure 测试类型断言失败
-func TestMaxMemoryCache_TypeAssertionFailure(t *testing.T) {
-	mock := &mockCache{
-		data: map[string]any{
-			"key1": "not a byte slice",
+// TestMaxMemoryCache_OnEvicted 测试淘汰回调函数是否正确触发
+// 参数:
+//   - t: 测试上下文
+// 功能:
+//   - 验证淘汰回调函数是否被正确调用
+//   - 验证回调参数是否正确
+// 测试场景:
+//   - 单次淘汰回调
+//   - 多次淘汰回调
+func TestMaxMemoryCache_OnEvicted(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setup       func() *MaxMemoryCache
+		keys        []string
+		values      [][]byte
+		wantEvicted string
+		wantValue   []byte
+		wantCount   int
+		wantUsed    int64
+	}{
+		{
+			name: "LRU策略触发淘汰",
+			setup: func() *MaxMemoryCache {
+				mock := &mockCache{data: make(map[string]any)}
+				cache := NewMaxMemoryCache(10, mock)
+				cache.policy = NewLRUPolicy()
+				return cache
+			},
+			keys:        []string{"key1", "key2", "key3"},
+			values:      [][]byte{[]byte("val1"), []byte("val2"), []byte("val3")},
+			wantEvicted: "key1",
+			wantValue:   []byte("val1"),
+			wantCount:   1,
+			wantUsed:    8,
 		},
-		fn: func(key string, val any) {}, // 初始化回调函数
+		{
+			name: "多次触发淘汰",
+			setup: func() *MaxMemoryCache {
+				mock := &mockCache{data: make(map[string]any)}
+				cache := NewMaxMemoryCache(5, mock)
+				cache.policy = NewLRUPolicy()
+				return cache
+			},
+			keys:        []string{"key1", "key2", "key3", "key4"},
+			values:      [][]byte{[]byte("v1"), []byte("v2"), []byte("v3"), []byte("v4")},
+			wantEvicted: "key2",
+			wantValue:   []byte("v2"),
+			wantCount:   2,
+			wantUsed:    4,
+		},
 	}
-	cache := NewMaxMemoryCache(100, mock)
-	// 初始化缓存策略
-	cache.policy = NewLRUPolicy()
-	cache.policy.KeyAccessed("key1")
-	cache.used = 6
 
-	// 测试Get方法类型断言失败
-	val, err := cache.Get(context.Background(), "key1")
-	if assert.NotNil(t, err) {
-		assert.Equal(t, "value is not []byte", err.Error())
-	}
-	assert.Nil(t, val)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := tc.setup()
 
-	// 测试LoadAndDelete方法类型断言失败
-	val, err = cache.LoadAndDelete(context.Background(), "key1")
-	if assert.NotNil(t, err) {
-		assert.Equal(t, "value is not []byte", err.Error())
+			var evictedKey string
+			var evictedVal any
+			var evictCount int
+
+			cache.OnEvicted(func(key string, val any) {
+				evictedKey = key
+				evictedVal = val
+				evictCount++
+			})
+
+			for i, key := range tc.keys {
+				_ = cache.Set(context.Background(), key, tc.values[i], time.Minute)
+			}
+
+			assert.Equal(t, tc.wantCount, evictCount)
+			assert.Equal(t, tc.wantEvicted, evictedKey)
+			assert.Equal(t, tc.wantValue, evictedVal)
+			assert.Equal(t, tc.wantUsed, cache.used)
+		})
 	}
-	assert.Nil(t, val)
+}
+
+// TestMaxMemoryCache_TypeAssertionFailure 测试类型断言失败
+// 参数:
+//   - t: 测试上下文
+// 功能:
+//   - 验证类型断言失败时的错误处理
+// 测试场景:
+//   - Get方法类型断言失败
+//   - LoadAndDelete方法类型断言失败
+func TestMaxMemoryCache_TypeAssertionFailure(t *testing.T) {
+	testCases := []struct {
+		name       string
+		setup      func() *MaxMemoryCache
+		key        string
+		wantErrMsg string
+	}{
+		{
+			name: "Get方法类型断言失败",
+			setup: func() *MaxMemoryCache {
+				mock := &mockCache{
+					data: map[string]any{
+						"key1": "not a byte slice",
+					},
+					fn: func(key string, val any) {},
+				}
+				cache := NewMaxMemoryCache(100, mock)
+				cache.policy = NewLRUPolicy()
+				cache.policy.KeyAccessed("key1")
+				cache.used = 6
+				return cache
+			},
+			key:        "key1",
+			wantErrMsg: "value is not []byte",
+		},
+		{
+			name: "LoadAndDelete方法类型断言失败",
+			setup: func() *MaxMemoryCache {
+				mock := &mockCache{
+					data: map[string]any{
+						"key1": 12345, // 测试不同类型的错误值
+					},
+					fn: func(key string, val any) {},
+				}
+				cache := NewMaxMemoryCache(100, mock)
+				cache.policy = NewLRUPolicy()
+				cache.policy.KeyAccessed("key1")
+				cache.used = 6
+				return cache
+			},
+			key:        "key1",
+			wantErrMsg: "value is not []byte",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := tc.setup()
+
+			val, err := cache.Get(context.Background(), tc.key)
+			if assert.NotNil(t, err) {
+				assert.Equal(t, tc.wantErrMsg, err.Error())
+			}
+			assert.Nil(t, val)
+
+			val, err = cache.LoadAndDelete(context.Background(), tc.key)
+			if assert.NotNil(t, err) {
+				assert.Equal(t, tc.wantErrMsg, err.Error())
+			}
+			assert.Nil(t, val)
+		})
+	}
 }
 
 // mockCache 模拟缓存实现

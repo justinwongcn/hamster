@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"strings"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
-	implErrKeyNotFound = errKeyNotFound
-	implErrClosed      = errDuplicateClose
+	implErrKeyNotFound = ErrCacheKeyNotFound
 )
 
 // TestBuildInMapCache_SetAndGet 测试缓存的基本设置和获取功能
@@ -115,9 +115,9 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			// 生成一个唯一的键，格式为 "key%d"
-			key := fmt.Sprintf("key%d", i)
+			key := fmt.Sprintf("键：%d", i)
 			// 向缓存中设置键值对，值的格式为 "value%d"，过期时间为1分钟
-			err := c.Set(context.Background(), key, fmt.Sprintf("value%d", i), time.Minute)
+			err := c.Set(context.Background(), key, fmt.Sprintf("值：%d", i), time.Minute)
 			assert.Nil(t, err)
 		}(i)
 	}
@@ -129,11 +129,11 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			// 生成一个唯一的键，格式为 "key%d"
-			key := fmt.Sprintf("key%d", i)
+			key := fmt.Sprintf("键：%d", i)
 			// 从缓存中获取指定键的值
 			val, err := c.Get(context.Background(), key)
 			if err == nil {
-				assert.Equal(t, fmt.Sprintf("value%d", i), val)
+				assert.Equal(t, fmt.Sprintf("值：%d", i), val)
 			}
 		}(i)
 	}
@@ -180,4 +180,20 @@ func TestBuildInMapCache_BackgroundCleanup(t *testing.T) {
 
 	_, err = c.Get(ctx, "expireKey")
 	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "过期缓存项应被后台清理")
+}
+
+// TestBuildInMapCache_Close 测试缓存的关闭功能
+// 验证点:
+// 1. 成功关闭缓存
+// 2. 重复关闭时返回ErrDuplicateClose错误
+func TestBuildInMapCache_Close(t *testing.T) {
+	c := NewBuildInMapCache(time.Minute)
+
+	// 第一次关闭，应该成功
+	err := c.Close()
+	assert.Nil(t, err)
+
+	// 第二次关闭，应该返回重复关闭错误
+	err = c.Close()
+	assert.Equal(t, ErrDuplicateClose, err)
 }
