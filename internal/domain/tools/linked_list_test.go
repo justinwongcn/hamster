@@ -26,10 +26,10 @@ func TestLinkedList_Add(t *testing.T) {
 	}{
 		{
 			name:           "add num to index left",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			newVal:         100,
 			index:          0,
-			wantLinkedList: NewLinkedListOf[int]([]int{100, 1, 2, 3}),
+			wantLinkedList: NewLinkedListOf([]int{100, 1, 2, 3}),
 		},
 		{
 			name:           "add num to index left1",
@@ -54,28 +54,28 @@ func TestLinkedList_Add(t *testing.T) {
 		},
 		{
 			name:           "add num to index mid",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			newVal:         100,
 			index:          1,
 			wantLinkedList: NewLinkedListOf([]int{1, 100, 2, 3}),
 		},
 		{
 			name:    "add num to index -1",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			newVal:  100,
 			index:   -1,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, -1),
 		},
 		{
 			name:    "add num to index OutOfRange",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			newVal:  100,
 			index:   4,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, 4),
 		},
 		{
 			name:           "add num to index 0",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			newVal:         100,
 			index:          0,
 			wantErr:        nil,
@@ -113,52 +113,52 @@ func TestLinkedList_Delete(t *testing.T) {
 	}{
 		{
 			name:    "delete num to index -1",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			index:   -1,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, -1),
 		},
 		{
 			name:    "delete beyond length index 99",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			index:   99,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, 99),
 		},
 		{
 			name:    "delete beyond length index 3",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			index:   3,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, 3),
 		},
 		{
 			name:    "delete empty node",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			index:   3,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 0, 3),
 		},
 		{
 			name:           "delete num to index 0",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			index:          0,
 			delVal:         1,
 			wantLinkedList: NewLinkedListOf([]int{2, 3}),
 		},
 		{
 			name:           "delete num to index by tail",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3, 4, 5}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3, 4, 5}) },
 			index:          4,
 			delVal:         5,
 			wantLinkedList: NewLinkedListOf([]int{1, 2, 3, 4}),
 		},
 		{
 			name:           "delete num to index 1",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{11, 22, 33, 44, 55}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{11, 22, 33, 44, 55}) },
 			index:          1,
 			delVal:         22,
 			wantLinkedList: NewLinkedListOf([]int{11, 33, 44, 55}),
 		},
 		{
 			name:           "deleting an element with only one",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{888}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{888}) },
 			index:          0,
 			delVal:         888,
 			wantLinkedList: NewLinkedListOf([]int{}),
@@ -189,57 +189,57 @@ func TestLinkedList_Append(t *testing.T) {
 	}{
 		{
 			name:           "append non-empty values to non-empty list",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{123}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{123}) },
 			newVal:         []int{234, 456},
-			wantLinkedList: NewLinkedListOf[int]([]int{123, 234, 456}),
+			wantLinkedList: NewLinkedListOf([]int{123, 234, 456}),
 		},
 		{
 			name:           "append empty values to non-empty list",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{123}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{123}) },
 			newVal:         []int{},
-			wantLinkedList: NewLinkedListOf[int]([]int{123}),
+			wantLinkedList: NewLinkedListOf([]int{123}),
 		},
 		{
 			name:           "append nil to non-empty list",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{123}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{123}) },
 			newVal:         nil,
-			wantLinkedList: NewLinkedListOf[int]([]int{123}),
+			wantLinkedList: NewLinkedListOf([]int{123}),
 		},
 		{
 			name:           "append non-empty values to empty list",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			newVal:         []int{234, 456},
-			wantLinkedList: NewLinkedListOf[int]([]int{234, 456}),
+			wantLinkedList: NewLinkedListOf([]int{234, 456}),
 		},
 		{
 			name:           "append empty values to empty list",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			newVal:         []int{},
-			wantLinkedList: NewLinkedListOf[int]([]int{}),
+			wantLinkedList: NewLinkedListOf([]int{}),
 		},
 		{
 			name:           "append nil to empty list",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			newVal:         nil,
-			wantLinkedList: NewLinkedListOf[int]([]int{}),
+			wantLinkedList: NewLinkedListOf([]int{}),
 		},
 		{
 			name:           "append non-empty values to nil list",
 			list:           func() *LinkedList[int] { return NewLinkedListOf[int](nil) },
 			newVal:         []int{234, 456},
-			wantLinkedList: NewLinkedListOf[int]([]int{234, 456}),
+			wantLinkedList: NewLinkedListOf([]int{234, 456}),
 		},
 		{
 			name:           "append empty values to nil list",
 			list:           func() *LinkedList[int] { return NewLinkedListOf[int](nil) },
 			newVal:         []int{},
-			wantLinkedList: NewLinkedListOf[int]([]int{}),
+			wantLinkedList: NewLinkedListOf([]int{}),
 		},
 		{
 			name:           "append nil to nil list",
 			list:           func() *LinkedList[int] { return NewLinkedListOf[int](nil) },
 			newVal:         nil,
-			wantLinkedList: NewLinkedListOf[int]([]int{}),
+			wantLinkedList: NewLinkedListOf([]int{}),
 		},
 	}
 
@@ -296,7 +296,7 @@ func TestNewLinkedListOf(t *testing.T) {
 // 3. 验证切片元素顺序与链表一致
 func TestLinkedList_AsSlice(t *testing.T) {
 	vals := []int{1, 2, 3}
-	a := NewLinkedListOf[int](vals)
+	a := NewLinkedListOf(vals)
 	slice := a.AsSlice()
 	// 内容相同
 	assert.Equal(t, slice, vals)
@@ -441,53 +441,53 @@ func TestLinkedList_Set(t *testing.T) {
 	}{
 		{
 			name:    "set num to index -1",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			index:   -1,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, -1),
 		},
 		{
 			name:    "set beyond length index 99",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{1, 2, 3}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{1, 2, 3}) },
 			index:   99,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 3, 99),
 		},
 		{
 			name:    "set empty node",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			index:   3,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 0, 3),
 		},
 		{
 			name:           "set num to index 3",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{11, 22, 33, 44, 55}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{11, 22, 33, 44, 55}) },
 			index:          2,
 			setVal:         999,
 			wantLinkedList: NewLinkedListOf([]int{11, 22, 999, 44, 55}),
 		},
 		{
 			name:           "set num to head",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{11, 22, 33, 44, 55}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{11, 22, 33, 44, 55}) },
 			index:          0,
 			setVal:         -200,
 			wantLinkedList: NewLinkedListOf([]int{-200, 22, 33, 44, 55}),
 		},
 		{
 			name:           "set num to tail",
-			list:           func() *LinkedList[int] { return NewLinkedListOf[int]([]int{-11, 22, -33, 44, -55, 999, -888}) },
+			list:           func() *LinkedList[int] { return NewLinkedListOf([]int{-11, 22, -33, 44, -55, 999, -888}) },
 			index:          6,
 			setVal:         888,
 			wantLinkedList: NewLinkedListOf([]int{-11, 22, -33, 44, -55, 999, 888}),
 		},
 		{
 			name:    "index == len(*node)",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{-11, 22, -33, 44, -55, 999, -888}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{-11, 22, -33, 44, -55, 999, -888}) },
 			index:   7,
 			setVal:  888,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 7, 7),
 		},
 		{
 			name:    "len(*node) == 0",
-			list:    func() *LinkedList[int] { return NewLinkedListOf[int]([]int{}) },
+			list:    func() *LinkedList[int] { return NewLinkedListOf([]int{}) },
 			index:   0,
 			setVal:  888,
 			wantErr: fmt.Errorf("ekit: 下标超出范围，长度 %d, 下标 %d", 0, 0),
@@ -508,7 +508,7 @@ func TestLinkedList_Set(t *testing.T) {
 }
 
 func BenchmarkLinkedList_Add(b *testing.B) {
-	l := NewLinkedListOf[int]([]int{1, 2, 3})
+	l := NewLinkedListOf([]int{1, 2, 3})
 	testCase := make([]int, 0, b.N)
 	for i := 1; i <= b.N; i++ {
 		testCase = append(testCase, rand.Intn(i))
@@ -520,15 +520,15 @@ func BenchmarkLinkedList_Add(b *testing.B) {
 }
 
 func BenchmarkLinkedList_Get(b *testing.B) {
-	l := NewLinkedListOf[int]([]int{1, 2, 3})
+	l := NewLinkedListOf([]int{1, 2, 3})
 	for i := 1; i <= b.N; i++ {
 		err := l.Add(i, i)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for i := 0; b.Loop(); i++ {
 		_, _ = l.Get(i)
 	}
 }

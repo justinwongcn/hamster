@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -58,6 +59,7 @@ func (m *MockCache) OnEvicted(func(string, any)) {
 // TestReadThroughCache_Get 测试ReadThroughCache的Get方法
 // 参数:
 //   - t: 测试上下文
+//
 // 测试场景:
 //   - 缓存命中
 //   - 缓存未命中_加载成功
@@ -204,6 +206,7 @@ func TestReadThroughCache_Get(t *testing.T) {
 // TestSingleFlight 测试singleflight防止缓存击穿功能
 // 参数:
 //   - t: 测试上下文
+//
 // 测试场景:
 //   - ReadThroughCache_SingleFlight防止缓存击穿
 //   - RateLimitReadThroughCache_SingleFlight防止缓存击穿
@@ -297,9 +300,11 @@ func TestSingleFlight(t *testing.T) {
 
 // TestReadThroughCache_SetLogFunc 测试设置日志函数的功能
 // 参数:
-//   t *testing.T - 测试上下文
+//
+//	t *testing.T - 测试上下文
+//
 // 测试场景:
-//   1. 验证日志函数能被正确设置和调用
+//  1. 验证日志函数能被正确设置和调用
 func TestReadThroughCache_SetLogFunc(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -347,13 +352,15 @@ func TestReadThroughCache_SetLogFunc(t *testing.T) {
 
 // TestRateLimitReadThroughCache_Get 测试带限流功能的读穿透缓存的Get方法
 // 参数:
-//   t *testing.T - 测试上下文
+//
+//	t *testing.T - 测试上下文
+//
 // 测试场景:
-//   1. 缓存命中
-//   2. 缓存未命中且未限流时加载成功
-//   3. 缓存未命中且限流时不加载
-//   4. 缓存未命中且加载失败
-//   5. 缓存未命中但设置缓存失败
+//  1. 缓存命中
+//  2. 缓存未命中且未限流时加载成功
+//  3. 缓存未命中且限流时不加载
+//  4. 缓存未命中且加载失败
+//  5. 缓存未命中但设置缓存失败
 func TestRateLimitReadThroughCache_Get(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -513,4 +520,21 @@ func TestRateLimitReadThroughCache_Get(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReadThroughCache_Get_CacheError 测试缓存获取时的错误情况
+func TestReadThroughCache_Get_CacheError(t *testing.T) {
+	mockCache := &MockCache{store: make(map[string]any), getShouldFail: true}
+	rtCache := &ReadThroughCache{
+		Cache: mockCache,
+		LoadFunc: func(ctx context.Context, key string) (any, error) {
+			return "loaded_value", nil
+		},
+		Expiration: time.Minute,
+	}
+
+	val, err := rtCache.Get(context.Background(), "key1")
+	assert.Error(t, err)
+	assert.Nil(t, val)
+	assert.Equal(t, "mock get error", err.Error())
 }

@@ -18,7 +18,7 @@ var (
 
 // ReadThroughCache 实现读透缓存模式
 // 当缓存未命中时自动从数据源加载数据并更新缓存
-// 使用singleflight.Group防止缓存击穿
+// 使用single flight.Group防止缓存击穿
 type ReadThroughCache struct {
 	interfaces.Cache
 	LoadFunc   func(ctx context.Context, key string) (any, error)
@@ -35,6 +35,29 @@ type RateLimitReadThroughCache struct {
 	LoadFunc   func(ctx context.Context, key string) (any, error)
 	Expiration time.Duration
 	g          singleflight.Group
+}
+
+// Get 实现读透缓存获取逻辑
+// 参数:
+//   - ctx: 上下文
+//   - key: 缓存键
+//
+// 返回值:
+//   - any: 缓存值
+//   - error: 错误信息
+//
+// 功能:
+//   - 优先从缓存获取数据
+//   - 缓存未命中时调用handleCacheMiss处理
+func (r *ReadThroughCache) Get(ctx context.Context, key string) (any, error) {
+	cachedVal, err := r.Cache.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, ErrKeyNotFound) {
+			return r.handleCacheMiss(ctx, key)
+		}
+		return nil, err
+	}
+	return cachedVal, nil
 }
 
 // Get 实现带限流功能的缓存获取逻辑
@@ -60,37 +83,18 @@ func (r *RateLimitReadThroughCache) Get(ctx context.Context, key string) (any, e
 	return val, err
 }
 
-// Get 实现读透缓存获取逻辑
-// 参数:
-//   - ctx: 上下文
-//   - key: 缓存键
-// 返回值:
-//   - any: 缓存值
-//   - error: 错误信息
-// 功能:
-//   - 优先从缓存获取数据
-//   - 缓存未命中时调用handleCacheMiss处理
-func (r *ReadThroughCache) Get(ctx context.Context, key string) (any, error) {
-	cachedVal, err := r.Cache.Get(ctx, key)
-	if err != nil {
-		if errors.Is(err, ErrKeyNotFound) {
-			return r.handleCacheMiss(ctx, key)
-		}
-		return nil, err
-	}
-	return cachedVal, nil
-}
-
 // handleCacheMiss 处理缓存未命中时的数据加载和缓存更新
 // handleCacheMiss 处理缓存未命中时的数据加载
 // 参数:
 //   - ctx: 上下文
 //   - key: 缓存键
+//
 // 返回值:
 //   - any: 加载的值
 //   - error: 错误信息
+//
 // 功能:
-//   - 使用singleflight防止缓存击穿
+//   - 使用single flight防止缓存击穿
 //   - 调用LoadFunc从数据源加载数据
 //   - 更新缓存并处理可能的错误
 func (r *ReadThroughCache) handleCacheMiss(ctx context.Context, key string) (any, error) {
@@ -129,6 +133,7 @@ func (r *ReadThroughCache) handleCacheMiss(ctx context.Context, key string) (any
 // SetLogFunc 设置日志记录函数
 // 参数:
 //   - logFunc: 日志记录函数
+//
 // 功能:
 //   - 设置缓存操作中的日志记录方式
 func (r *ReadThroughCache) SetLogFunc(logFunc func(format string, args ...any)) {

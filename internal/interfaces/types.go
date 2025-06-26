@@ -13,22 +13,22 @@ type Cache interface {
 	// val: 缓存值
 	// expiration: 过期时间
 	Set(ctx context.Context, key string, val any, expiration time.Duration) error
-	
+
 	// Get 获取缓存值
 	// key: 缓存键
 	// 返回: 缓存值和错误信息
 	Get(ctx context.Context, key string) (any, error)
-	
+
 	// Delete 删除缓存值
 	// key: 缓存键
 	// 返回: 错误信息
 	Delete(ctx context.Context, key string) error
-	
+
 	// LoadAndDelete 获取并删除缓存值
 	// key: 缓存键
 	// 返回: 被删除的缓存值和错误信息
 	LoadAndDelete(ctx context.Context, key string) (any, error)
-	
+
 	// OnEvicted 设置淘汰回调函数
 	// fn: 回调函数，当缓存项被淘汰时调用
 	OnEvicted(fn func(key string, val any))

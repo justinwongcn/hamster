@@ -58,34 +58,37 @@ func NewBuildInMapCache(interval time.Duration, opts ...BuildInMapCacheOption) *
 		opt(res)
 	}
 
-	// 启动 goroutine 定期清理过期缓存项
-	go func() {
-		// 创建按指定间隔时间触发的定时器
-		ticker := time.NewTicker(interval)
-		for {
-			select {
-			case t := <-ticker.C:
-				// 加写锁保证清理过程中缓存数据不被其他 goroutine 修改
-				res.mutex.Lock()
-				// 计数器限制每次清理检查的缓存项数量，避免长时间占用锁
-				i := 0
-				// 遍历缓存项，检查并删除过期项
-				for key, val := range res.data {
-					if i > 10000 {
-						break
+	// 启动 goroutine 定期清理过期缓存项（仅当interval > 0时）
+	if interval > 0 {
+		go func() {
+			// 创建按指定间隔时间触发的定时器
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case t := <-ticker.C:
+					// 加写锁保证清理过程中缓存数据不被其他 goroutine 修改
+					res.mutex.Lock()
+					// 计数器限制每次清理检查的缓存项数量，避免长时间占用锁
+					i := 0
+					// 遍历缓存项，检查并删除过期项
+					for key, val := range res.data {
+						if i > 10000 {
+							break
+						}
+						if val.deadlineBefore(t) {
+							res.delete(key)
+						}
+						i++
 					}
-					if val.deadlineBefore(t) {
-						res.delete(key)
-					}
-					i++
+					// 解锁允许其他 goroutine 访问缓存数据
+					res.mutex.Unlock()
+				case <-res.close:
+					return
 				}
-				// 解锁允许其他 goroutine 访问缓存数据
-				res.mutex.Unlock()
-			case <-res.close:
-				return
 			}
-		}
-	}()
+		}()
+	}
 
 	return res
 }
@@ -229,4 +232,12 @@ func (b *BuildInMapCache) Close() error {
 	}
 
 	return nil
+}
+
+// OnEvicted 设置缓存项被淘汰时的回调函数
+// 实现interfaces.Cache接口
+func (b *BuildInMapCache) OnEvicted(fn func(key string, val any)) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	b.onEvicted = fn
 }

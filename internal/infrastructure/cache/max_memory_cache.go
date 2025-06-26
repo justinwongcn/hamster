@@ -24,13 +24,18 @@ type MaxMemoryCache struct {
 
 // NewMaxMemoryCache 创建新的MaxMemoryCache实例
 // 参数:
-//   max: 最大内存限制(字节)
-//   cache: 底层缓存实现
-//   policy: 淘汰策略实现，可选，默认为LRU策略
+//
+//	max: 最大内存限制(字节)
+//	cache: 底层缓存实现
+//	policy: 淘汰策略实现，可选，默认为LRU策略
+//
 // 返回值:
-//   *MaxMemoryCache: 新的缓存实例
+//
+//	*MaxMemoryCache: 新的缓存实例
+//
 // 功能:
-//   创建带内存限制的缓存实例，支持自定义淘汰策略
+//
+//	创建带内存限制的缓存实例，支持自定义淘汰策略
 func NewMaxMemoryCache(max int64, cache interfaces.Cache, policy ...EvictionPolicy) *MaxMemoryCache {
 	res := &MaxMemoryCache{
 		max:    max,
@@ -50,6 +55,45 @@ func NewMaxMemoryCache(max int64, cache interfaces.Cache, policy ...EvictionPoli
 	return res
 }
 
+// NewMaxMemoryCacheWithLRU 创建使用LRU策略的MaxMemoryCache实例
+// 参数:
+//
+//	max: 最大内存限制(字节)
+//	cache: 底层缓存实现
+//
+// 返回值:
+//
+//	*MaxMemoryCache: 新的缓存实例
+func NewMaxMemoryCacheWithLRU(max int64, cache interfaces.Cache) *MaxMemoryCache {
+	return NewMaxMemoryCache(max, cache, NewLRUPolicy())
+}
+
+// NewMaxMemoryCacheWithFIFO 创建使用FIFO策略的MaxMemoryCache实例
+// 参数:
+//
+//	max: 最大内存限制(字节)
+//	cache: 底层缓存实现
+//
+// 返回值:
+//
+//	*MaxMemoryCache: 新的缓存实例
+func NewMaxMemoryCacheWithFIFO(max int64, cache interfaces.Cache) *MaxMemoryCache {
+	return NewMaxMemoryCache(max, cache, NewFIFOPolicy())
+}
+
+// NewMaxMemoryCacheWithRandom 创建使用随机策略的MaxMemoryCache实例
+// 参数:
+//
+//	max: 最大内存限制(字节)
+//	cache: 底层缓存实现
+//
+// 返回值:
+//
+//	*MaxMemoryCache: 新的缓存实例
+func NewMaxMemoryCacheWithRandom(max int64, cache interfaces.Cache) *MaxMemoryCache {
+	return NewMaxMemoryCache(max, cache, NewRandomPolicy())
+}
+
 // Set 添加或更新缓存项
 // 当内存不足时会自动淘汰最久未使用的数据，确保总内存不超过max限制
 // 参数:
@@ -60,7 +104,8 @@ func NewMaxMemoryCache(max int64, cache interfaces.Cache, policy ...EvictionPoli
 // 返回值:
 //   - error: 操作错误信息
 func (m *MaxMemoryCache) Set(ctx context.Context, key string, val []byte,
-	expiration time.Duration) error {
+	expiration time.Duration,
+) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -76,15 +121,15 @@ func (m *MaxMemoryCache) Set(ctx context.Context, key string, val []byte,
 		// 更新已使用内存大小
 		m.used = m.used + int64(len(val))
 		// 通知策略该键已被访问
-		m.policy.KeyAccessed(key)
+		_ = m.policy.KeyAccessed(ctx, key)
 	}
 
 	// 如果添加新值后超出最大内存限制，则执行淘汰策略
 	for m.used > m.max {
 		// 调用淘汰策略获取要删除的键
-		k := m.policy.Evict()
-		if k == "" {
-			break // 没有可淘汰的键，退出循环
+		k, evictErr := m.policy.Evict(ctx)
+		if evictErr != nil || k == "" {
+			break // 没有可淘汰的键或出错，退出循环
 		}
 		// 从底层缓存中删除选中的键
 		_ = m.Cache.Delete(ctx, k)
@@ -115,9 +160,9 @@ func (m *MaxMemoryCache) Get(ctx context.Context, key string) ([]byte, error) {
 	val, err := m.Cache.Get(ctx, key)
 	if err == nil {
 		// 从策略中移除键（用于更新访问顺序）
-		m.policy.Remove(key)
+		_ = m.policy.Remove(ctx, key)
 		// 通知策略该键已被访问
-		m.policy.KeyAccessed(key)
+		_ = m.policy.KeyAccessed(ctx, key)
 
 		// 类型断言为字节数组
 		if valBytes, ok := val.([]byte); ok {
@@ -192,11 +237,12 @@ func (m *MaxMemoryCache) OnEvicted(fn func(key string, val any)) {
 }
 
 // evicted 处理缓存项淘汰逻辑
-// 当缓存项被淘汰时调用，更新内存统计并从LRU策略中移除key
+// 当缓存项被淘汰时调用，更新内存统计并从策略中移除key
 func (m *MaxMemoryCache) evicted(key string, val any) {
 	// 将 any 类型转换为 []byte
 	if valBytes, ok := val.([]byte); ok {
 		m.used = m.used - int64(len(valBytes))
 	}
-	m.policy.Remove(key)
+	// 使用context.Background()，因为这是内部回调
+	_ = m.policy.Remove(context.Background(), key)
 }

@@ -3,18 +3,15 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"strings"
-
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	implErrKeyNotFound = ErrCacheKeyNotFound
-)
+var implErrKeyNotFound = ErrCacheKeyNotFound
 
 // TestBuildInMapCache_SetAndGet 测试缓存的基本设置和获取功能
 // 验证点:
@@ -110,7 +107,7 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 
 	// 并发写测试
 	// 启动100个goroutine并发地向缓存中写入数据
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -124,7 +121,7 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 
 	// 并发读测试
 	// 启动100个goroutine并发地从缓存中读取数据
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -196,4 +193,106 @@ func TestBuildInMapCache_Close(t *testing.T) {
 	// 第二次关闭，应该返回重复关闭错误
 	err = c.Close()
 	assert.Equal(t, ErrDuplicateClose, err)
+}
+
+// TestBuildInMapCache_OnEvicted 测试OnEvicted方法
+func TestBuildInMapCache_OnEvicted_Method(t *testing.T) {
+	c := NewBuildInMapCache(time.Minute)
+
+	evictedKeys := make([]string, 0)
+	c.OnEvicted(func(key string, val any) {
+		evictedKeys = append(evictedKeys, key)
+	})
+
+	// 设置一个值然后删除，应该触发回调
+	err := c.Set(context.Background(), "key1", "value1", time.Minute)
+	assert.Nil(t, err)
+
+	err = c.Delete(context.Background(), "key1")
+	assert.Nil(t, err)
+
+	assert.Contains(t, evictedKeys, "key1")
+}
+
+// TestBuildInMapCache_LoadAndDelete_NotFound 测试LoadAndDelete方法处理不存在的key
+func TestBuildInMapCache_LoadAndDelete_NotFound(t *testing.T) {
+	c := NewBuildInMapCache(time.Minute)
+
+	val, err := c.LoadAndDelete(context.Background(), "not_exist")
+	assert.Equal(t, ErrCacheKeyNotFound, err)
+	assert.Nil(t, val)
+}
+
+// TestBuildInMapCache_Get_EdgeCases 测试Get方法的边界情况
+func TestBuildInMapCache_Get_EdgeCases(t *testing.T) {
+	c := NewBuildInMapCache(time.Minute)
+
+	// 设置一个即将过期的值
+	err := c.Set(context.Background(), "key1", "value1", time.Nanosecond)
+	assert.Nil(t, err)
+
+	// 等待过期
+	time.Sleep(time.Millisecond)
+
+	// 获取过期的值，应该返回错误
+	val, err := c.Get(context.Background(), "key1")
+	assert.Error(t, err)
+	assert.Nil(t, val)
+	assert.Contains(t, err.Error(), ErrCacheKeyNotFound.Error())
+}
+
+// TestBuildInMapCache_Delete_NonExistent 测试删除不存在的key
+func TestBuildInMapCache_Delete_NonExistent(t *testing.T) {
+	c := NewBuildInMapCache(time.Minute)
+
+	evictedKeys := make([]string, 0)
+	c.OnEvicted(func(key string, val any) {
+		evictedKeys = append(evictedKeys, key)
+	})
+
+	// 删除不存在的key
+	err := c.Delete(context.Background(), "not_exist")
+	assert.Nil(t, err)
+
+	// 回调不应该被触发
+	assert.Empty(t, evictedKeys)
+}
+
+// TestBuildInMapCache_ZeroInterval 测试零间隔时间的情况
+func TestBuildInMapCache_ZeroInterval(t *testing.T) {
+	c := NewBuildInMapCache(0) // 零间隔，不启动清理goroutine
+
+	// 设置一个值
+	err := c.Set(context.Background(), "key1", "value1", time.Minute)
+	assert.Nil(t, err)
+
+	// 获取值
+	val, err := c.Get(context.Background(), "key1")
+	assert.Nil(t, err)
+	assert.Equal(t, "value1", val)
+
+	// 关闭缓存
+	err = c.Close()
+	assert.Nil(t, err)
+}
+
+// TestBuildInMapCache_Get_ConcurrentExpiration 测试并发过期检查
+func TestBuildInMapCache_Get_ConcurrentExpiration(t *testing.T) {
+	c := NewBuildInMapCache(time.Minute)
+
+	// 设置一个即将过期的值
+	err := c.Set(context.Background(), "key1", "value1", time.Nanosecond)
+	assert.Nil(t, err)
+
+	// 等待过期
+	time.Sleep(time.Millisecond)
+
+	// 并发获取，测试双重检查逻辑
+	go func() {
+		c.Get(context.Background(), "key1")
+	}()
+
+	val, err := c.Get(context.Background(), "key1")
+	assert.Error(t, err)
+	assert.Nil(t, val)
 }
