@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,80 +14,200 @@ import (
 
 var implErrKeyNotFound = ErrCacheKeyNotFound
 
-// TestBuildInMapCache_SetAndGet 测试缓存的基本设置和获取功能
-// 验证点:
-// 1. 可以成功设置缓存值
-// 2. 可以正确获取已设置的缓存值
-// 3. 获取不存在的key返回正确的错误信息
-func TestBuildInMapCache_SetAndGet(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+func TestBuildInMapCache(t *testing.T) {
+	tests := []struct {
+		name        string
+		operation   func(*BuildInMapCache) error
+		wantErr     bool
+		wantErrType error
+		checkResult func(*testing.T, *BuildInMapCache)
+	}{
+		{
+			name: "基本设置和获取",
+			operation: func(c *BuildInMapCache) error {
+				return c.Set(context.Background(), "key1", "value1", time.Minute)
+			},
+			checkResult: func(t *testing.T, c *BuildInMapCache) {
+				val, err := c.Get(context.Background(), "key1")
+				assert.Nil(t, err)
+				assert.Equal(t, "value1", val)
+			},
+		},
+		{
+			name: "获取不存在的key",
+			operation: func(c *BuildInMapCache) error {
+				_, err := c.Get(context.Background(), "not_exist")
+				return err
+			},
+			wantErr:     true,
+			wantErrType: ErrCacheKeyNotFound,
+		},
+		// 可以继续添加更多测试用例
+	}
 
-	// 测试正常设置和获取
-	err := c.Set(context.Background(), "key1", "value1", time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
+			err := tt.operation(c)
 
-	val, err := c.Get(context.Background(), "key1")
-	assert.Nil(t, err)
-	assert.Equal(t, "value1", val)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.True(t, errors.Is(err, tt.wantErrType))
+			} else {
+				assert.NoError(t, err)
+			}
 
-	// 测试获取不存在的key
-	_, err = c.Get(context.Background(), "not_exist")
-	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "错误消息应包含：%s", implErrKeyNotFound)
+			if tt.checkResult != nil {
+				tt.checkResult(t, c)
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_Expiration 测试缓存的过期功能
-// 验证点:
-// 1. 缓存项在过期后无法获取
-// 2. 过期后获取返回正确的错误信息
 func TestBuildInMapCache_Expiration(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name       string
+		key        string
+		value      string
+		expiration time.Duration
+		sleepTime  time.Duration
+		wantErr    bool
+	}{
+		{
+			name:       "缓存项过期后无法获取",
+			key:        "key1",
+			value:      "value1",
+			expiration: time.Millisecond * 100,
+			sleepTime:  time.Millisecond * 150,
+			wantErr:    true,
+		},
+	}
 
-	// 测试设置过期时间
-	err := c.Set(context.Background(), "key1", "value1", time.Millisecond*100)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
 
-	time.Sleep(time.Millisecond * 150)
-	_, err = c.Get(context.Background(), "key1")
-	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "错误消息应包含：%s", implErrKeyNotFound)
+			err := c.Set(context.Background(), tt.key, tt.value, tt.expiration)
+			assert.NoError(t, err)
+
+			time.Sleep(tt.sleepTime)
+			_, err = c.Get(context.Background(), tt.key)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()))
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_Delete 测试缓存的删除功能
-// 验证点:
-// 1. 可以成功删除缓存项
-// 2. 删除后无法获取该缓存项
-// 3. 获取已删除的key返回正确的错误信息
 func TestBuildInMapCache_Delete(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name      string
+		setupKey  string
+		setupVal  string
+		deleteKey string
+		checkKey  string
+		wantErr   bool
+	}{
+		{
+			name:      "成功删除缓存项",
+			setupKey:  "key1",
+			setupVal:  "value1",
+			deleteKey: "key1",
+			checkKey:  "key1",
+			wantErr:   true,
+		},
+		{
+			name:      "删除不存在的key",
+			setupKey:  "key1",
+			setupVal:  "value1",
+			deleteKey: "key2",
+			checkKey:  "key1",
+			wantErr:   false,
+		},
+	}
 
-	// 测试删除
-	err := c.Set(context.Background(), "key1", "value1", time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
 
-	err = c.Delete(context.Background(), "key1")
-	assert.Nil(t, err)
+			err := c.Set(context.Background(), tt.setupKey, tt.setupVal, time.Minute)
+			assert.NoError(t, err)
 
-	_, err = c.Get(context.Background(), "key1")
-	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "错误消息应包含：%s", implErrKeyNotFound)
+			err = c.Delete(context.Background(), tt.deleteKey)
+			assert.NoError(t, err)
+
+			_, err = c.Get(context.Background(), tt.checkKey)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()))
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_LoadAndDelete 测试获取并删除缓存项功能
-// 验证点:
-// 1. 可以成功获取并删除缓存项
-// 2. 操作后无法再次获取该缓存项
-// 3. 返回被删除的缓存值
 func TestBuildInMapCache_LoadAndDelete(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name         string
+		setupKey     string
+		setupVal     string
+		loadKey      string
+		wantVal      any
+		wantLoadErr  bool
+		wantCheckErr bool
+	}{
+		{
+			name:         "成功获取并删除缓存项",
+			setupKey:     "key1",
+			setupVal:     "value1",
+			loadKey:      "key1",
+			wantVal:      "value1",
+			wantLoadErr:  false,
+			wantCheckErr: true,
+		},
+		{
+			name:         "获取并删除不存在的key",
+			setupKey:     "key1",
+			setupVal:     "value1",
+			loadKey:      "key2",
+			wantVal:      nil,
+			wantLoadErr:  true,
+			wantCheckErr: false,
+		},
+	}
 
-	// 测试获取并删除
-	err := c.Set(context.Background(), "key1", "value1", time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
 
-	val, err := c.LoadAndDelete(context.Background(), "key1")
-	assert.Nil(t, err)
-	assert.Equal(t, "value1", val)
+			err := c.Set(context.Background(), tt.setupKey, tt.setupVal, time.Minute)
+			assert.NoError(t, err)
 
-	_, err = c.Get(context.Background(), "key1")
-	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "错误消息应包含：%s", implErrKeyNotFound)
+			val, err := c.LoadAndDelete(context.Background(), tt.loadKey)
+			if tt.wantLoadErr {
+				assert.Error(t, err)
+				assert.Equal(t, tt.wantVal, val)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantVal, val)
+
+				// 验证删除后无法获取
+				_, err = c.Get(context.Background(), tt.loadKey)
+				if tt.wantCheckErr {
+					assert.Error(t, err)
+					assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()))
+				}
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_Concurrency 测试缓存的并发安全性
@@ -107,21 +228,21 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 
 	// 并发写测试
 	// 启动100个goroutine并发地向缓存中写入数据
-	for i := range 100 {
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			// 生成一个唯一的键，格式为 "key%d"
 			key := fmt.Sprintf("键：%d", i)
 			// 向缓存中设置键值对，值的格式为 "value%d"，过期时间为1分钟
-			err := c.Set(context.Background(), key, fmt.Sprintf("值：%d", i), time.Minute)
+			err := c.Set(context.Background(), key, fmt.Sprintf("값：%d", i), time.Minute)
 			assert.Nil(t, err)
 		}(i)
 	}
 
 	// 并发读测试
 	// 启动100个goroutine并发地从缓存中读取数据
-	for i := range 100 {
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -130,7 +251,7 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 			// 从缓存中获取指定键的值
 			val, err := c.Get(context.Background(), key)
 			if err == nil {
-				assert.Equal(t, fmt.Sprintf("值：%d", i), val)
+				assert.Equal(t, fmt.Sprintf("값：%d", i), val)
 			}
 		}(i)
 	}
@@ -140,140 +261,309 @@ func TestBuildInMapCache_Concurrency(t *testing.T) {
 }
 
 // TestBuildInMapCache_OnEvicted 测试内置映射缓存的淘汰回调功能
-// 验证点:
-// 1. 当缓存项被删除时，淘汰回调函数是否被正确触发
-// 2. 淘汰回调函数接收到的参数是否正确
 func TestBuildInMapCache_OnEvicted(t *testing.T) {
-	// 定义变量用于存储淘汰回调函数接收到的键和值
-	var evictedKey string
-	var evictedValue any
+	tests := []struct {
+		name           string
+		key            string
+		value          string
+		operation      string
+		wantEvictedKey string
+		wantEvictedVal string
+	}{
+		{
+			name:           "删除操作触发回调",
+			key:            "key1",
+			value:          "value1",
+			operation:      "delete",
+			wantEvictedKey: "key1",
+			wantEvictedVal: "value1",
+		},
+	}
 
-	c := NewBuildInMapCache(time.Minute, BuildInMapCacheWithEvictedCallback(func(key string, val any) {
-		// 在回调函数中更新存储淘汰键和值的变量
-		evictedKey = key
-		evictedValue = val
-	}))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var evictedKey string
+			var evictedValue any
 
-	err := c.Set(context.Background(), "key1", "value1", time.Millisecond*10)
-	assert.Nil(t, err)
+			c := NewBuildInMapCache(time.Minute, BuildInMapCacheWithEvictedCallback(func(key string, val any) {
+				evictedKey = key
+				evictedValue = val
+			}))
 
-	// 直接删除键值以触发回调
-	err = c.Delete(context.Background(), "key1")
-	assert.Nil(t, err)
+			err := c.Set(context.Background(), tt.key, tt.value, time.Minute)
+			assert.NoError(t, err)
 
-	assert.Equal(t, "key1", evictedKey)
-	assert.Equal(t, "value1", evictedValue)
+			switch tt.operation {
+			case "delete":
+				err = c.Delete(context.Background(), tt.key)
+				assert.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.wantEvictedKey, evictedKey)
+			assert.Equal(t, tt.wantEvictedVal, evictedValue)
+		})
+	}
 }
 
 // TestBuildInMapCache_BackgroundCleanup 测试后台清理过期缓存项功能
 func TestBuildInMapCache_BackgroundCleanup(t *testing.T) {
-	c := NewBuildInMapCache(time.Millisecond * 100)
-	ctx := context.Background()
+	tests := []struct {
+		name            string
+		cleanupInterval time.Duration
+		key             string
+		value           string
+		expiration      time.Duration
+		sleepTime       time.Duration
+		wantErr         bool
+	}{
+		{
+			name:            "后台清理过期缓存项",
+			cleanupInterval: time.Millisecond * 100,
+			key:             "expireKey",
+			value:           "value",
+			expiration:      time.Millisecond * 50,
+			sleepTime:       time.Millisecond * 200,
+			wantErr:         true,
+		},
+	}
 
-	err := c.Set(ctx, "expireKey", "value", time.Millisecond*50)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(tt.cleanupInterval)
+			ctx := context.Background()
 
-	time.Sleep(time.Millisecond * 200)
+			err := c.Set(ctx, tt.key, tt.value, tt.expiration)
+			assert.NoError(t, err)
 
-	_, err = c.Get(ctx, "expireKey")
-	assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()), "过期缓存项应被后台清理")
+			time.Sleep(tt.sleepTime)
+
+			_, err = c.Get(ctx, tt.key)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.True(t, strings.Contains(err.Error(), implErrKeyNotFound.Error()))
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_Close 测试缓存的关闭功能
-// 验证点:
-// 1. 成功关闭缓存
-// 2. 重复关闭时返回ErrDuplicateClose错误
 func TestBuildInMapCache_Close(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name       string
+		operations []string
+		wantErr    error
+	}{
+		{
+			name:       "第一次关闭成功",
+			operations: []string{"close"},
+			wantErr:    nil,
+		},
+		{
+			name:       "重复关闭返回错误",
+			operations: []string{"close", "close"},
+			wantErr:    ErrDuplicateClose,
+		},
+	}
 
-	// 第一次关闭，应该成功
-	err := c.Close()
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
+			var err error
 
-	// 第二次关闭，应该返回重复关闭错误
-	err = c.Close()
-	assert.Equal(t, ErrDuplicateClose, err)
+			for _, op := range tt.operations {
+				if op == "close" {
+					err = c.Close()
+				}
+			}
+
+			if tt.wantErr != nil {
+				assert.Equal(t, tt.wantErr, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_OnEvicted 测试OnEvicted方法
 func TestBuildInMapCache_OnEvicted_Method(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name         string
+		key          string
+		value        string
+		operation    string
+		wantContains string
+	}{
+		{
+			name:         "删除操作触发OnEvicted回调",
+			key:          "key1",
+			value:        "value1",
+			operation:    "delete",
+			wantContains: "key1",
+		},
+	}
 
-	evictedKeys := make([]string, 0)
-	c.OnEvicted(func(key string, val any) {
-		evictedKeys = append(evictedKeys, key)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
 
-	// 设置一个值然后删除，应该触发回调
-	err := c.Set(context.Background(), "key1", "value1", time.Minute)
-	assert.Nil(t, err)
+			evictedKeys := make([]string, 0)
+			c.OnEvicted(func(key string, val any) {
+				evictedKeys = append(evictedKeys, key)
+			})
 
-	err = c.Delete(context.Background(), "key1")
-	assert.Nil(t, err)
+			err := c.Set(context.Background(), tt.key, tt.value, time.Minute)
+			assert.NoError(t, err)
 
-	assert.Contains(t, evictedKeys, "key1")
+			switch tt.operation {
+			case "delete":
+				err = c.Delete(context.Background(), tt.key)
+				assert.NoError(t, err)
+			}
+
+			assert.Contains(t, evictedKeys, tt.wantContains)
+		})
+	}
 }
 
 // TestBuildInMapCache_LoadAndDelete_NotFound 测试LoadAndDelete方法处理不存在的key
 func TestBuildInMapCache_LoadAndDelete_NotFound(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name    string
+		key     string
+		wantErr error
+		wantVal any
+	}{
+		{
+			name:    "LoadAndDelete不存在的key",
+			key:     "not_exist",
+			wantErr: ErrCacheKeyNotFound,
+			wantVal: nil,
+		},
+	}
 
-	val, err := c.LoadAndDelete(context.Background(), "not_exist")
-	assert.Equal(t, ErrCacheKeyNotFound, err)
-	assert.Nil(t, val)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
+
+			val, err := c.LoadAndDelete(context.Background(), tt.key)
+			assert.Equal(t, tt.wantErr, err)
+			assert.Equal(t, tt.wantVal, val)
+		})
+	}
 }
 
 // TestBuildInMapCache_Get_EdgeCases 测试Get方法的边界情况
 func TestBuildInMapCache_Get_EdgeCases(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name       string
+		key        string
+		value      string
+		expiration time.Duration
+		sleepTime  time.Duration
+		wantErr    bool
+		wantVal    any
+	}{
+		{
+			name:       "获取过期的值返回错误",
+			key:        "key1",
+			value:      "value1",
+			expiration: time.Nanosecond,
+			sleepTime:  time.Millisecond,
+			wantErr:    true,
+			wantVal:    nil,
+		},
+	}
 
-	// 设置一个即将过期的值
-	err := c.Set(context.Background(), "key1", "value1", time.Nanosecond)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
 
-	// 等待过期
-	time.Sleep(time.Millisecond)
+			err := c.Set(context.Background(), tt.key, tt.value, tt.expiration)
+			assert.NoError(t, err)
 
-	// 获取过期的值，应该返回错误
-	val, err := c.Get(context.Background(), "key1")
-	assert.Error(t, err)
-	assert.Nil(t, val)
-	assert.Contains(t, err.Error(), ErrCacheKeyNotFound.Error())
+			time.Sleep(tt.sleepTime)
+
+			val, err := c.Get(context.Background(), tt.key)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), ErrCacheKeyNotFound.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantVal, val)
+		})
+	}
 }
 
 // TestBuildInMapCache_Delete_NonExistent 测试删除不存在的key
 func TestBuildInMapCache_Delete_NonExistent(t *testing.T) {
-	c := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name             string
+		deleteKey        string
+		wantEvictedEmpty bool
+	}{
+		{
+			name:             "删除不存在的key不触发回调",
+			deleteKey:        "not_exist",
+			wantEvictedEmpty: true,
+		},
+	}
 
-	evictedKeys := make([]string, 0)
-	c.OnEvicted(func(key string, val any) {
-		evictedKeys = append(evictedKeys, key)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(time.Minute)
 
-	// 删除不存在的key
-	err := c.Delete(context.Background(), "not_exist")
-	assert.Nil(t, err)
+			evictedKeys := make([]string, 0)
+			c.OnEvicted(func(key string, val any) {
+				evictedKeys = append(evictedKeys, key)
+			})
 
-	// 回调不应该被触发
-	assert.Empty(t, evictedKeys)
+			err := c.Delete(context.Background(), tt.deleteKey)
+			assert.NoError(t, err)
+
+			if tt.wantEvictedEmpty {
+				assert.Empty(t, evictedKeys)
+			}
+		})
+	}
 }
 
 // TestBuildInMapCache_ZeroInterval 测试零间隔时间的情况
 func TestBuildInMapCache_ZeroInterval(t *testing.T) {
-	c := NewBuildInMapCache(0) // 零间隔，不启动清理goroutine
+	tests := []struct {
+		name     string
+		interval time.Duration
+		key      string
+		value    string
+		wantVal  string
+	}{
+		{
+			name:     "零间隔不启动清理goroutine",
+			interval: 0,
+			key:      "key1",
+			value:    "value1",
+			wantVal:  "value1",
+		},
+	}
 
-	// 设置一个值
-	err := c.Set(context.Background(), "key1", "value1", time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewBuildInMapCache(tt.interval)
 
-	// 获取值
-	val, err := c.Get(context.Background(), "key1")
-	assert.Nil(t, err)
-	assert.Equal(t, "value1", val)
+			err := c.Set(context.Background(), tt.key, tt.value, time.Minute)
+			assert.NoError(t, err)
 
-	// 关闭缓存
-	err = c.Close()
-	assert.Nil(t, err)
+			val, err := c.Get(context.Background(), tt.key)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantVal, val)
+
+			err = c.Close()
+			assert.NoError(t, err)
+		})
+	}
 }
 
 // TestBuildInMapCache_Get_ConcurrentExpiration 测试并发过期检查
@@ -289,7 +579,7 @@ func TestBuildInMapCache_Get_ConcurrentExpiration(t *testing.T) {
 
 	// 并发获取，测试双重检查逻辑
 	go func() {
-		c.Get(context.Background(), "key1")
+		_, _ = c.Get(context.Background(), "key1")
 	}()
 
 	val, err := c.Get(context.Background(), "key1")

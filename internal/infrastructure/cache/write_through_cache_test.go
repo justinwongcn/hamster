@@ -126,31 +126,82 @@ func TestWriteThroughCache_Set(t *testing.T) {
 }
 
 // TestWriteThroughCache_OtherMethods 测试WriteThroughCache的其他方法
-// 验证其他方法正确委托给底层缓存
 func TestWriteThroughCache_OtherMethods(t *testing.T) {
-	mockCache := &MockCache{store: map[string]any{"key1": "value1"}}
-	wtCache := &WriteThroughCache{
-		Cache: mockCache,
+	tests := []struct {
+		name      string
+		setupData map[string]any
+		operation string
+		key       string
+		value     any
+		wantValue any
+		wantErr   bool
+	}{
+		{
+			name:      "Get方法委托给底层缓存",
+			setupData: map[string]any{"key1": "value1"},
+			operation: "get",
+			key:       "key1",
+			wantValue: "value1",
+			wantErr:   false,
+		},
+		{
+			name:      "Delete方法委托给底层缓存",
+			setupData: map[string]any{"key1": "value1"},
+			operation: "delete",
+			key:       "key1",
+			wantErr:   false,
+		},
+		{
+			name:      "LoadAndDelete方法委托给底层缓存",
+			setupData: map[string]any{"key2": "value2"},
+			operation: "loadAndDelete",
+			key:       "key2",
+			wantValue: "value2",
+			wantErr:   false,
+		},
 	}
 
-	// 测试Get方法
-	val, err := wtCache.Get(context.Background(), "key1")
-	require.NoError(t, err)
-	assert.Equal(t, "value1", val)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCache := &MockCache{store: tt.setupData}
+			wtCache := &WriteThroughCache{Cache: mockCache}
 
-	// 测试Delete方法
-	err = wtCache.Delete(context.Background(), "key1")
-	require.NoError(t, err)
-
-	// 测试LoadAndDelete方法
-	mockCache.store["key2"] = "value2"
-	val, err = wtCache.LoadAndDelete(context.Background(), "key2")
-	require.NoError(t, err)
-	assert.Equal(t, "value2", val)
+			switch tt.operation {
+			case "get":
+				val, err := wtCache.Get(context.Background(), tt.key)
+				if tt.wantErr {
+					assert.Error(t, err)
+				} else {
+					assert.NoError(t, err)
+					assert.Equal(t, tt.wantValue, val)
+				}
+			case "delete":
+				err := wtCache.Delete(context.Background(), tt.key)
+				if tt.wantErr {
+					assert.Error(t, err)
+				} else {
+					assert.NoError(t, err)
+				}
+			case "loadAndDelete":
+				val, err := wtCache.LoadAndDelete(context.Background(), tt.key)
+				if tt.wantErr {
+					assert.Error(t, err)
+				} else {
+					assert.NoError(t, err)
+					assert.Equal(t, tt.wantValue, val)
+				}
+			}
+		})
+	}
 
 	// 测试OnEvicted方法
-	wtCache.OnEvicted(func(key string, val any) {
-		// 测试回调函数
+	t.Run("OnEvicted方法委托给底层缓存", func(t *testing.T) {
+		mockCache := &MockCache{store: make(map[string]any)}
+		wtCache := &WriteThroughCache{Cache: mockCache}
+
+		wtCache.OnEvicted(func(key string, val any) {
+			// 测试回调函数
+		})
 	})
 }
 

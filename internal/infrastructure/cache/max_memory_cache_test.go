@@ -4,10 +4,12 @@ package cache
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/justinwongcn/hamster/internal/interfaces"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -193,50 +195,61 @@ func TestMaxMemoryCache_Delete(t *testing.T) {
 }
 
 // TestMaxMemoryCache_Set_Eviction 测试设置时的淘汰逻辑
-// 参数:
-//   - t: 测试上下文
-//
-// 功能:
-//   - 验证内存不足时自动淘汰最久未使用数据的功能
-//
-// 测试场景:
-//   - 添加多个键值触发淘汰机制
-//   - 验证被淘汰键是否已删除
-//   - 验证剩余键是否保留
 func TestMaxMemoryCache_Set_Eviction(t *testing.T) {
-	mock := &mockCache{
-		data: make(map[string]any),
+	tests := []struct {
+		name       string
+		maxMemory  int64
+		operations []struct {
+			key   string
+			value []byte
+		}
+		wantUsed      int64
+		evictedKey    string
+		remainingKeys []string
+	}{
+		{
+			name:      "内存不足触发淘汰",
+			maxMemory: 10,
+			operations: []struct {
+				key   string
+				value []byte
+			}{
+				{"key1", []byte("val1")},
+				{"key2", []byte("val2")},
+				{"key3", []byte("val3")},
+			},
+			wantUsed:      8,
+			evictedKey:    "key1",
+			remainingKeys: []string{"key2", "key3"},
+		},
 	}
-	cache := NewMaxMemoryCache(10, mock) // 设置小内存限制
-	cache.policy = NewLRUPolicy()
 
-	// 添加第一个key
-	err := cache.Set(context.Background(), "key1", []byte("val1"), time.Minute)
-	assert.Nil(t, err)
-	assert.Equal(t, int64(4), cache.used) // "val1"长度为4
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockCache{data: make(map[string]any)}
+			cache := NewMaxMemoryCache(tt.maxMemory, mock)
+			cache.policy = NewLRUPolicy()
 
-	// 添加第二个key，不会触发淘汰
-	err = cache.Set(context.Background(), "key2", []byte("val2"), time.Minute)
-	assert.Nil(t, err)
-	assert.Equal(t, int64(8), cache.used) // 4+4=8
+			for _, op := range tt.operations {
+				err := cache.Set(context.Background(), op.key, op.value, time.Minute)
+				assert.NoError(t, err)
+			}
 
-	// 添加第三个key，触发淘汰
-	err = cache.Set(context.Background(), "key3", []byte("val3"), time.Minute)
-	assert.Nil(t, err)
-	assert.Equal(t, int64(8), cache.used) // 淘汰key1后，8-4+4=8
+			assert.Equal(t, tt.wantUsed, cache.used)
 
-	// 验证key1被淘汰
-	_, err = cache.Get(context.Background(), "key1")
-	assert.Equal(t, errNotFound, err)
+			// 验证被淘汰的key
+			if tt.evictedKey != "" {
+				_, err := cache.Get(context.Background(), tt.evictedKey)
+				assert.Equal(t, errNotFound, err)
+			}
 
-	// 验证key2和key3存在
-	val, err := cache.Get(context.Background(), "key2")
-	assert.Nil(t, err)
-	assert.Equal(t, []byte("val2"), val)
-
-	val, err = cache.Get(context.Background(), "key3")
-	assert.Nil(t, err)
-	assert.Equal(t, []byte("val3"), val)
+			// 验证剩余的key
+			for _, key := range tt.remainingKeys {
+				_, err := cache.Get(context.Background(), key)
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 // TestMaxMemoryCache_OnEvicted 测试淘汰回调函数是否正确触发
@@ -452,89 +465,188 @@ func (m *mockCache) OnEvicted(fn func(key string, val any)) {
 
 // TestMaxMemoryCache_ConstructorMethods 测试不同的构造函数方法
 func TestMaxMemoryCache_ConstructorMethods(t *testing.T) {
-	cache := NewBuildInMapCache(time.Minute)
+	tests := []struct {
+		name        string
+		constructor func(int64, interfaces.Cache) *MaxMemoryCache
+		maxMemory   int64
+	}{
+		{
+			name:        "NewMaxMemoryCacheWithLRU",
+			constructor: NewMaxMemoryCacheWithLRU,
+			maxMemory:   1024,
+		},
+		{
+			name:        "NewMaxMemoryCacheWithFIFO",
+			constructor: NewMaxMemoryCacheWithFIFO,
+			maxMemory:   1024,
+		},
+		{
+			name:        "NewMaxMemoryCacheWithRandom",
+			constructor: NewMaxMemoryCacheWithRandom,
+			maxMemory:   1024,
+		},
+	}
 
-	// 测试NewMaxMemoryCacheWithLRU
-	lruCache := NewMaxMemoryCacheWithLRU(1024, cache)
-	assert.NotNil(t, lruCache)
-	assert.Equal(t, int64(1024), lruCache.max)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewBuildInMapCache(time.Minute)
+			maxCache := tt.constructor(tt.maxMemory, cache)
 
-	// 测试NewMaxMemoryCacheWithFIFO
-	fifoCache := NewMaxMemoryCacheWithFIFO(1024, cache)
-	assert.NotNil(t, fifoCache)
-	assert.Equal(t, int64(1024), fifoCache.max)
-
-	// 测试NewMaxMemoryCacheWithRandom
-	randomCache := NewMaxMemoryCacheWithRandom(1024, cache)
-	assert.NotNil(t, randomCache)
-	assert.Equal(t, int64(1024), randomCache.max)
+			assert.NotNil(t, maxCache)
+			assert.Equal(t, tt.maxMemory, maxCache.max)
+		})
+	}
 }
 
 // TestMaxMemoryCache_LoadAndDelete_Error 测试LoadAndDelete的错误情况
 func TestMaxMemoryCache_LoadAndDelete_Error(t *testing.T) {
-	cache := NewBuildInMapCache(time.Minute)
-	maxCache := NewMaxMemoryCache(1024, cache, NewLRUPolicy())
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+		wantVal any
+	}{
+		{
+			name:    "不存在的key",
+			key:     "not_exist",
+			wantErr: true,
+			wantVal: []byte(nil),
+		},
+	}
 
-	// 测试不存在的key
-	val, err := maxCache.LoadAndDelete(context.Background(), "not_exist")
-	assert.Error(t, err)
-	assert.Nil(t, val)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewBuildInMapCache(time.Minute)
+			maxCache := NewMaxMemoryCache(1024, cache, NewLRUPolicy())
+
+			val, err := maxCache.LoadAndDelete(context.Background(), tt.key)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantVal, val)
+		})
+	}
 }
 
 // TestMaxMemoryCache_NilCache 测试nil缓存的情况
 func TestMaxMemoryCache_NilCache(t *testing.T) {
-	maxCache := NewMaxMemoryCache(1024, nil, NewLRUPolicy())
-	assert.NotNil(t, maxCache)
-	assert.Nil(t, maxCache.Cache)
+	tests := []struct {
+		name      string
+		maxMemory int64
+		cache     interfaces.Cache
+		policy    EvictionPolicy
+	}{
+		{
+			name:      "nil缓存",
+			maxMemory: 1024,
+			cache:     nil,
+			policy:    NewLRUPolicy(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			maxCache := NewMaxMemoryCache(tt.maxMemory, tt.cache, tt.policy)
+			assert.NotNil(t, maxCache)
+			assert.Equal(t, tt.cache, maxCache.Cache)
+		})
+	}
 }
 
 // TestMaxMemoryCache_Set_PolicyError 测试策略操作失败的情况
 func TestMaxMemoryCache_Set_PolicyError(t *testing.T) {
-	cache := NewBuildInMapCache(time.Minute)
-	maxCache := NewMaxMemoryCache(10, cache, NewLRUPolicy())
+	tests := []struct {
+		name      string
+		maxMemory int64
+		values    [][]byte
+		wantUsed  func(int64, int64) bool
+	}{
+		{
+			name:      "设置大值触发淘汰",
+			maxMemory: 10,
+			values:    [][]byte{[]byte("12345"), []byte("67890")},
+			wantUsed:  func(used, max int64) bool { return used <= max },
+		},
+	}
 
-	// 设置一个大值，触发淘汰
-	err := maxCache.Set(context.Background(), "key1", []byte("12345"), time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewBuildInMapCache(time.Minute)
+			maxCache := NewMaxMemoryCache(tt.maxMemory, cache, NewLRUPolicy())
 
-	// 设置另一个大值，应该触发淘汰
-	err = maxCache.Set(context.Background(), "key2", []byte("67890"), time.Minute)
-	assert.Nil(t, err)
+			for i, value := range tt.values {
+				err := maxCache.Set(context.Background(), fmt.Sprintf("key%d", i+1), value, time.Minute)
+				assert.NoError(t, err)
+			}
 
-	// 验证内存使用
-	assert.LessOrEqual(t, maxCache.used, maxCache.max)
+			assert.True(t, tt.wantUsed(maxCache.used, maxCache.max))
+		})
+	}
 }
 
 // TestMaxMemoryCache_LoadAndDelete_TypeAssertion 测试LoadAndDelete的类型断言
 func TestMaxMemoryCache_LoadAndDelete_TypeAssertion(t *testing.T) {
-	cache := NewBuildInMapCache(time.Minute)
-	maxCache := NewMaxMemoryCache(1024, cache, NewLRUPolicy())
+	tests := []struct {
+		name       string
+		setupValue any
+		wantErr    string
+		wantVal    any
+	}{
+		{
+			name:       "非[]byte类型返回错误",
+			setupValue: "string_value",
+			wantErr:    "value is not []byte",
+			wantVal:    []byte(nil),
+		},
+	}
 
-	// 直接在底层缓存设置一个非[]byte类型的值
-	err := cache.Set(context.Background(), "key1", "string_value", time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewBuildInMapCache(time.Minute)
+			maxCache := NewMaxMemoryCache(1024, cache, NewLRUPolicy())
 
-	// LoadAndDelete，应该返回错误（因为类型断言失败）
-	val, err := maxCache.LoadAndDelete(context.Background(), "key1")
-	assert.Error(t, err)
-	assert.Equal(t, "value is not []byte", err.Error())
-	assert.Nil(t, val)
+			err := cache.Set(context.Background(), "key1", tt.setupValue, time.Minute)
+			assert.NoError(t, err)
+
+			val, err := maxCache.LoadAndDelete(context.Background(), "key1")
+			assert.Error(t, err)
+			assert.Equal(t, tt.wantErr, err.Error())
+			assert.Equal(t, tt.wantVal, val)
+		})
+	}
 }
 
 // TestMaxMemoryCache_Evicted_TypeAssertion 测试evicted方法的类型断言
 func TestMaxMemoryCache_Evicted_TypeAssertion(t *testing.T) {
-	cache := NewBuildInMapCache(time.Minute)
-	maxCache := NewMaxMemoryCache(1024, cache, NewLRUPolicy())
+	tests := []struct {
+		name       string
+		setupValue any
+		evictValue any
+		wantUsed   int64
+	}{
+		{
+			name:       "非[]byte类型不减少内存使用",
+			setupValue: "string_value",
+			evictValue: "string_value",
+			wantUsed:   0,
+		},
+	}
 
-	// 直接在底层缓存设置一个非[]byte类型的值
-	err := cache.Set(context.Background(), "key1", "string_value", time.Minute)
-	assert.Nil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewBuildInMapCache(time.Minute)
+			maxCache := NewMaxMemoryCache(1024, cache, NewLRUPolicy())
 
-	// 手动调用evicted方法，测试类型断言失败的情况
-	maxCache.evicted("key1", "string_value")
+			err := cache.Set(context.Background(), "key1", tt.setupValue, time.Minute)
+			assert.NoError(t, err)
 
-	// 内存使用应该为0（因为类型断言失败）
-	assert.Equal(t, int64(0), maxCache.used)
+			maxCache.evicted("key1", tt.evictValue)
+
+			assert.Equal(t, tt.wantUsed, maxCache.used)
+		})
+	}
 }
 
 // TestMaxMemoryCache_Set_EvictionError 测试淘汰过程中的错误处理

@@ -10,204 +10,336 @@ import (
 )
 
 func TestNewLRUPolicy(t *testing.T) {
-	t.Run("should create empty LRU policy", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		assert.NotNil(t, policy)
+	tests := []struct {
+		name     string
+		wantSize int
+	}{
+		{
+			name:     "创建空的LRU策略",
+			wantSize: 0,
+		},
+	}
 
-		size, err := policy.Size(context.Background())
-		require.NoError(t, err)
-		assert.Equal(t, 0, size)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := NewLRUPolicy()
+			assert.NotNil(t, policy)
+
+			size, err := policy.Size(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSize, size)
+		})
+	}
 }
 
 func TestLRUPolicy_KeyAccessed(t *testing.T) {
-	ctx := context.Background()
+	tests := []struct {
+		name        string
+		operations  []string
+		wantSize    int
+		checkKeys   []string
+		wantHasKeys []bool
+		testEvict   bool
+		wantEvicted string
+	}{
+		{
+			name:        "添加新key到LRU策略",
+			operations:  []string{"key1"},
+			wantSize:    1,
+			checkKeys:   []string{"key1"},
+			wantHasKeys: []bool{true},
+		},
+		{
+			name:        "处理重复key访问",
+			operations:  []string{"key1", "key2", "key1"},
+			wantSize:    2,
+			checkKeys:   []string{"key1", "key2"},
+			wantHasKeys: []bool{true, true},
+			testEvict:   true,
+			wantEvicted: "key2",
+		},
+	}
 
-	t.Run("should add new key to LRU policy", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			policy := NewLRUPolicy()
 
-		size, err := policy.Size(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 1, size)
+			for _, key := range tt.operations {
+				err := policy.KeyAccessed(ctx, key)
+				require.NoError(t, err)
+			}
 
-		has, err := policy.Has(ctx, "key1")
-		require.NoError(t, err)
-		assert.True(t, has)
-	})
+			size, err := policy.Size(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSize, size)
 
-	t.Run("should handle duplicate key access", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
-		err = policy.KeyAccessed(ctx, "key2")
-		require.NoError(t, err)
-		err = policy.KeyAccessed(ctx, "key1") // 重复访问
-		require.NoError(t, err)
+			for i, key := range tt.checkKeys {
+				has, err := policy.Has(ctx, key)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantHasKeys[i], has)
+			}
 
-		size, err := policy.Size(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 2, size) // 应该还是2个key
-
-		// key1应该是最近使用的，所以key2应该先被淘汰
-		evicted, err := policy.Evict(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "key2", evicted)
-	})
+			if tt.testEvict {
+				evicted, err := policy.Evict(ctx)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantEvicted, evicted)
+			}
+		})
+	}
 }
 
 func TestLRUPolicy_Evict(t *testing.T) {
-	ctx := context.Background()
+	tests := []struct {
+		name        string
+		setupKeys   []string
+		wantEvicted string
+		wantSize    int
+		checkKey    string
+		wantHas     bool
+	}{
+		{
+			name:        "空策略返回空字符串",
+			setupKeys:   []string{},
+			wantEvicted: "",
+			wantSize:    0,
+			checkKey:    "",
+			wantHas:     false,
+		},
+		{
+			name:        "淘汰最近最少使用的key",
+			setupKeys:   []string{"key1", "key2"},
+			wantEvicted: "key1",
+			wantSize:    1,
+			checkKey:    "key1",
+			wantHas:     false,
+		},
+	}
 
-	t.Run("should return empty string when policy is empty", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		evicted, err := policy.Evict(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "", evicted)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			policy := NewLRUPolicy()
 
-	t.Run("should evict least recently used key", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
-		err = policy.KeyAccessed(ctx, "key2")
-		require.NoError(t, err)
+			for _, key := range tt.setupKeys {
+				err := policy.KeyAccessed(ctx, key)
+				require.NoError(t, err)
+			}
 
-		size, err := policy.Size(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 2, size)
+			evicted, err := policy.Evict(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantEvicted, evicted)
 
-		evicted, err := policy.Evict(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "key1", evicted)
+			size, err := policy.Size(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSize, size)
 
-		size, err = policy.Size(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 1, size)
+			if tt.checkKey != "" {
+				has, err := policy.Has(ctx, tt.checkKey)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantHas, has)
+			}
+		})
+	}
+}
 
-		has, err := policy.Has(ctx, "key1")
-		require.NoError(t, err)
-		assert.False(t, has)
-	})
+// TestLRUPolicy_EvictOrder 测试LRU淘汰顺序
+func TestLRUPolicy_EvictOrder(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupKeys   []string
+		evictCount  int
+		wantEvicted []string
+	}{
+		{
+			name:        "维持正确的淘汰顺序",
+			setupKeys:   []string{"key1", "key2", "key3"},
+			evictCount:  2,
+			wantEvicted: []string{"key1", "key2"},
+		},
+	}
 
-	t.Run("should maintain correct order after eviction", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
-		err = policy.KeyAccessed(ctx, "key2")
-		require.NoError(t, err)
-		err = policy.KeyAccessed(ctx, "key3")
-		require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			policy := NewLRUPolicy()
 
-		evicted, err := policy.Evict(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "key1", evicted)
+			for _, key := range tt.setupKeys {
+				err := policy.KeyAccessed(ctx, key)
+				require.NoError(t, err)
+			}
 
-		evicted, err = policy.Evict(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, "key2", evicted)
-	})
+			var evicted []string
+			for i := 0; i < tt.evictCount; i++ {
+				key, err := policy.Evict(ctx)
+				require.NoError(t, err)
+				evicted = append(evicted, key)
+			}
+
+			assert.Equal(t, tt.wantEvicted, evicted)
+		})
+	}
 }
 
 func TestLRUPolicy_Remove(t *testing.T) {
-	ctx := context.Background()
+	tests := []struct {
+		name      string
+		setupKeys []string
+		removeKey string
+		wantSize  int
+		checkKey  string
+		wantHas   bool
+	}{
+		{
+			name:      "移除存在的key",
+			setupKeys: []string{"key1"},
+			removeKey: "key1",
+			wantSize:  0,
+			checkKey:  "key1",
+			wantHas:   false,
+		},
+		{
+			name:      "移除不存在的key不影响其他key",
+			setupKeys: []string{"key1"},
+			removeKey: "key2",
+			wantSize:  1,
+			checkKey:  "key1",
+			wantHas:   true,
+		},
+	}
 
-	t.Run("should remove existing key", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
-		err = policy.Remove(ctx, "key1")
-		require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			policy := NewLRUPolicy()
 
-		size, err := policy.Size(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 0, size)
+			for _, key := range tt.setupKeys {
+				err := policy.KeyAccessed(ctx, key)
+				require.NoError(t, err)
+			}
 
-		has, err := policy.Has(ctx, "key1")
-		require.NoError(t, err)
-		assert.False(t, has)
-	})
+			err := policy.Remove(ctx, tt.removeKey)
+			require.NoError(t, err)
 
-	t.Run("should do nothing when key does not exist", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
-		err = policy.Remove(ctx, "key2")
-		require.NoError(t, err)
+			size, err := policy.Size(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSize, size)
 
-		size, err := policy.Size(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, 1, size)
-
-		has, err := policy.Has(ctx, "key1")
-		require.NoError(t, err)
-		assert.True(t, has)
-	})
+			has, err := policy.Has(ctx, tt.checkKey)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHas, has)
+		})
+	}
 }
 
 func TestLRUPolicy_Has(t *testing.T) {
-	ctx := context.Background()
+	tests := []struct {
+		name      string
+		setupKeys []string
+		checkKey  string
+		wantHas   bool
+	}{
+		{
+			name:      "检查存在的key返回true",
+			setupKeys: []string{"key1"},
+			checkKey:  "key1",
+			wantHas:   true,
+		},
+		{
+			name:      "检查不存在的key返回false",
+			setupKeys: []string{},
+			checkKey:  "key1",
+			wantHas:   false,
+		},
+	}
 
-	t.Run("should return true for existing key", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		err := policy.KeyAccessed(ctx, "key1")
-		require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			policy := NewLRUPolicy()
 
-		has, err := policy.Has(ctx, "key1")
-		require.NoError(t, err)
-		assert.True(t, has)
-	})
+			for _, key := range tt.setupKeys {
+				err := policy.KeyAccessed(ctx, key)
+				require.NoError(t, err)
+			}
 
-	t.Run("should return false for non-existent key", func(t *testing.T) {
-		policy := NewLRUPolicy()
-		has, err := policy.Has(ctx, "key1")
-		require.NoError(t, err)
-		assert.False(t, has)
-	})
+			has, err := policy.Has(ctx, tt.checkKey)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHas, has)
+		})
+	}
 }
 
 func TestLRUPolicy_CombinedOperations(t *testing.T) {
-	ctx := context.Background()
-	policy := NewLRUPolicy()
+	tests := []struct {
+		name       string
+		operations []struct {
+			action string
+			key    string
+		}
+		wantEvicted string
+		wantSize    int
+		checkKeys   map[string]bool
+	}{
+		{
+			name: "组合操作测试LRU顺序",
+			operations: []struct {
+				action string
+				key    string
+			}{
+				{"access", "key1"},
+				{"access", "key2"},
+				{"access", "key3"},
+				{"access", "key1"}, // 移动key1到最新位置
+				{"evict", ""},      // 应该淘汰key2
+				{"remove", "key3"}, // 删除key3
+			},
+			wantEvicted: "key2",
+			wantSize:    1,
+			checkKeys: map[string]bool{
+				"key1": true,
+				"key2": false,
+				"key3": false,
+			},
+		},
+	}
 
-	// Add initial keys
-	err := policy.KeyAccessed(ctx, "key1")
-	require.NoError(t, err)
-	err = policy.KeyAccessed(ctx, "key2")
-	require.NoError(t, err)
-	err = policy.KeyAccessed(ctx, "key3")
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			policy := NewLRUPolicy()
+			var evicted string
 
-	// Access key1 to move it to end
-	err = policy.KeyAccessed(ctx, "key1")
-	require.NoError(t, err)
+			for _, op := range tt.operations {
+				switch op.action {
+				case "access":
+					err := policy.KeyAccessed(ctx, op.key)
+					require.NoError(t, err)
+				case "evict":
+					var err error
+					evicted, err = policy.Evict(ctx)
+					require.NoError(t, err)
+				case "remove":
+					err := policy.Remove(ctx, op.key)
+					require.NoError(t, err)
+				}
+			}
 
-	// Evict key2 (LRU)
-	evicted, err := policy.Evict(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, "key2", evicted)
+			if tt.wantEvicted != "" {
+				assert.Equal(t, tt.wantEvicted, evicted)
+			}
 
-	// Remove key3
-	err = policy.Remove(ctx, "key3")
-	require.NoError(t, err)
+			size, err := policy.Size(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSize, size)
 
-	// Verify final state
-	size, err := policy.Size(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, 1, size)
-
-	has, err := policy.Has(ctx, "key1")
-	require.NoError(t, err)
-	assert.True(t, has)
-
-	has, err = policy.Has(ctx, "key2")
-	require.NoError(t, err)
-	assert.False(t, has)
-
-	has, err = policy.Has(ctx, "key3")
-	require.NoError(t, err)
-	assert.False(t, has)
+			for key, expected := range tt.checkKeys {
+				has, err := policy.Has(ctx, key)
+				require.NoError(t, err)
+				assert.Equal(t, expected, has)
+			}
+		})
+	}
 }
 
 func TestLRUPolicy_Size(t *testing.T) {
@@ -280,7 +412,7 @@ func TestLRUPolicy_Capacity(t *testing.T) {
 		policy := NewLRUPolicy() // 无限制容量
 
 		// 添加多个key
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			err := policy.KeyAccessed(ctx, fmt.Sprintf("key%d", i))
 			require.NoError(t, err)
 		}
