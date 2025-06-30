@@ -30,13 +30,13 @@ type FIFOPolicy struct {
 // 返回值:
 //   - *FIFOPolicy: 新的FIFO策略实例
 func NewFIFOPolicy(capacity ...int) *FIFOPolicy {
-	cap := 0
+	capacityVal := 0
 	if len(capacity) > 0 && capacity[0] > 0 {
-		cap = capacity[0]
+		capacityVal = capacity[0]
 	}
 
 	return &FIFOPolicy{
-		capacity: cap,
+		capacity: capacityVal,
 		size:     0,
 		cache:    make(map[string]*fifoNode),
 		head:     nil,
@@ -46,7 +46,7 @@ func NewFIFOPolicy(capacity ...int) *FIFOPolicy {
 
 // KeyAccessed 记录key被访问
 // FIFO策略中，已存在的key不会改变位置，只有新key会被添加到队列尾部
-func (f *FIFOPolicy) KeyAccessed(ctx context.Context, key string) error {
+func (f *FIFOPolicy) KeyAccessed(_ context.Context, key string) error {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
@@ -89,7 +89,7 @@ func (f *FIFOPolicy) KeyAccessed(ctx context.Context, key string) error {
 
 // Evict 执行淘汰并返回被淘汰的key
 // 移除最早添加的key（队列头部）
-func (f *FIFOPolicy) Evict(ctx context.Context) (string, error) {
+func (f *FIFOPolicy) Evict(context.Context) (string, error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
@@ -110,7 +110,7 @@ func (f *FIFOPolicy) Evict(ctx context.Context) (string, error) {
 }
 
 // Remove 移除指定key
-func (f *FIFOPolicy) Remove(ctx context.Context, key string) error {
+func (f *FIFOPolicy) Remove(_ context.Context, key string) error {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
@@ -145,7 +145,7 @@ func (f *FIFOPolicy) Remove(ctx context.Context, key string) error {
 }
 
 // Has 检查key是否存在
-func (f *FIFOPolicy) Has(ctx context.Context, key string) (bool, error) {
+func (f *FIFOPolicy) Has(_ context.Context, key string) (bool, error) {
 	f.mutex.RLock()
 	defer f.mutex.RUnlock()
 
@@ -154,7 +154,7 @@ func (f *FIFOPolicy) Has(ctx context.Context, key string) (bool, error) {
 }
 
 // Size 返回当前跟踪的key数量
-func (f *FIFOPolicy) Size(ctx context.Context) (int, error) {
+func (f *FIFOPolicy) Size(context.Context) (int, error) {
 	f.mutex.RLock()
 	defer f.mutex.RUnlock()
 
@@ -162,7 +162,7 @@ func (f *FIFOPolicy) Size(ctx context.Context) (int, error) {
 }
 
 // Clear 清空所有key
-func (f *FIFOPolicy) Clear(ctx context.Context) error {
+func (f *FIFOPolicy) Clear(context.Context) error {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 

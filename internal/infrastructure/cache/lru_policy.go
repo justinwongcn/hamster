@@ -31,9 +31,9 @@ type LRUPolicy struct {
 // 返回值:
 //   - *LRUPolicy: 新的LRU策略实例
 func NewLRUPolicy(capacity ...int) *LRUPolicy {
-	cap := 0
+	var capacityVal = 0
 	if len(capacity) > 0 && capacity[0] > 0 {
-		cap = capacity[0]
+		capacityVal = capacity[0]
 	}
 
 	// 创建头尾哨兵节点
@@ -43,7 +43,7 @@ func NewLRUPolicy(capacity ...int) *LRUPolicy {
 	tail.prev = head
 
 	return &LRUPolicy{
-		capacity: cap,
+		capacity: capacityVal,
 		size:     0,
 		cache:    make(map[string]*lruNode),
 		head:     head,
@@ -53,7 +53,7 @@ func NewLRUPolicy(capacity ...int) *LRUPolicy {
 
 // KeyAccessed 记录key被访问
 // 将key移动到链表头部（最近使用位置）
-func (l *LRUPolicy) KeyAccessed(ctx context.Context, key string) error {
+func (l *LRUPolicy) KeyAccessed(_ context.Context, key string) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -80,7 +80,7 @@ func (l *LRUPolicy) KeyAccessed(ctx context.Context, key string) error {
 
 // Evict 执行淘汰并返回被淘汰的key
 // 移除最久未使用的key（链表尾部）
-func (l *LRUPolicy) Evict(ctx context.Context) (string, error) {
+func (l *LRUPolicy) Evict(context.Context) (string, error) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -96,7 +96,7 @@ func (l *LRUPolicy) Evict(ctx context.Context) (string, error) {
 }
 
 // Remove 移除指定key
-func (l *LRUPolicy) Remove(ctx context.Context, key string) error {
+func (l *LRUPolicy) Remove(_ context.Context, key string) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -109,7 +109,7 @@ func (l *LRUPolicy) Remove(ctx context.Context, key string) error {
 }
 
 // Has 判断key是否存在
-func (l *LRUPolicy) Has(ctx context.Context, key string) (bool, error) {
+func (l *LRUPolicy) Has(_ context.Context, key string) (bool, error) {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
 
@@ -118,7 +118,7 @@ func (l *LRUPolicy) Has(ctx context.Context, key string) (bool, error) {
 }
 
 // Size 返回当前跟踪的key数量
-func (l *LRUPolicy) Size(ctx context.Context) (int, error) {
+func (l *LRUPolicy) Size(context.Context) (int, error) {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
 
@@ -126,7 +126,7 @@ func (l *LRUPolicy) Size(ctx context.Context) (int, error) {
 }
 
 // Clear 清空所有key
-func (l *LRUPolicy) Clear(ctx context.Context) error {
+func (l *LRUPolicy) Clear(context.Context) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 

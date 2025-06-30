@@ -91,8 +91,8 @@ func TestWriteThroughCache_Set(t *testing.T) {
 			storeFunc, stored := tt.setupStoreFunc()
 
 			wtCache := &WriteThroughCache{
-				Cache:     mockCache,
-				StoreFunc: storeFunc,
+				Repository: mockCache,
+				StoreFunc:  storeFunc,
 			}
 
 			err := wtCache.Set(context.Background(), tt.key, tt.value, tt.expiration)
@@ -164,7 +164,7 @@ func TestWriteThroughCache_OtherMethods(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockCache := &MockCache{store: tt.setupData}
-			wtCache := &WriteThroughCache{Cache: mockCache}
+			wtCache := &WriteThroughCache{Repository: mockCache}
 
 			switch tt.operation {
 			case "get":
@@ -197,7 +197,7 @@ func TestWriteThroughCache_OtherMethods(t *testing.T) {
 	// 测试OnEvicted方法
 	t.Run("OnEvicted方法委托给底层缓存", func(t *testing.T) {
 		mockCache := &MockCache{store: make(map[string]any)}
-		wtCache := &WriteThroughCache{Cache: mockCache}
+		wtCache := &WriteThroughCache{Repository: mockCache}
 
 		wtCache.OnEvicted(func(key string, val any) {
 			// 测试回调函数
@@ -320,8 +320,8 @@ func TestRateLimitWriteThroughCache_Set(t *testing.T) {
 			ctx := tt.setupContext()
 
 			rlwtCache := &RateLimitWriteThroughCache{
-				Cache:     mockCache,
-				StoreFunc: storeFunc,
+				Repository: mockCache,
+				StoreFunc:  storeFunc,
 			}
 
 			err := rlwtCache.Set(ctx, tt.key, tt.value, tt.expiration)
