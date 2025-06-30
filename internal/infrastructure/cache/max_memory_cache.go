@@ -4,22 +4,21 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
-	"github.com/justinwongcn/hamster/internal/interfaces"
+	domainCache "github.com/justinwongcn/hamster/internal/domain/cache"
 )
 
 // MaxMemoryCache 实现带内存限制的缓存，默认基于LRU策略
 // 当内存使用超过max限制时自动淘汰最久未使用数据
 // 线程安全，支持并发访问
 type MaxMemoryCache struct {
-	Cache  interfaces.Cache // 底层缓存实现，需实现interfaces.Cache接口
-	max    int64            // 最大内存限制(字节)，超过此值将触发淘汰
-	used   int64            // 当前已使用内存(字节)，仅计算缓存值本身大小
-	mutex  *sync.Mutex      // 互斥锁保证并发安全
-	policy EvictionPolicy   // 淘汰策略
+	Cache  domainCache.Repository // 底层缓存实现，需实现domain.Repository接口
+	max    int64                  // 最大内存限制(字节)，超过此值将触发淘汰
+	used   int64                  // 当前已使用内存(字节)，仅计算缓存值本身大小
+	mutex  *sync.Mutex            // 互斥锁保证并发安全
+	policy EvictionPolicy         // 淘汰策略
 }
 
 // NewMaxMemoryCache 创建新的MaxMemoryCache实例
@@ -36,7 +35,7 @@ type MaxMemoryCache struct {
 // 功能:
 //
 //	创建带内存限制的缓存实例，支持自定义淘汰策略
-func NewMaxMemoryCache(max int64, cache interfaces.Cache, policy ...EvictionPolicy) *MaxMemoryCache {
+func NewMaxMemoryCache(max int64, cache domainCache.Repository, policy ...EvictionPolicy) *MaxMemoryCache {
 	res := &MaxMemoryCache{
 		max:    max,
 		Cache:  cache,
@@ -64,7 +63,7 @@ func NewMaxMemoryCache(max int64, cache interfaces.Cache, policy ...EvictionPoli
 // 返回值:
 //
 //	*MaxMemoryCache: 新的缓存实例
-func NewMaxMemoryCacheWithLRU(max int64, cache interfaces.Cache) *MaxMemoryCache {
+func NewMaxMemoryCacheWithLRU(max int64, cache domainCache.Repository) *MaxMemoryCache {
 	return NewMaxMemoryCache(max, cache, NewLRUPolicy())
 }
 
@@ -77,7 +76,7 @@ func NewMaxMemoryCacheWithLRU(max int64, cache interfaces.Cache) *MaxMemoryCache
 // 返回值:
 //
 //	*MaxMemoryCache: 新的缓存实例
-func NewMaxMemoryCacheWithFIFO(max int64, cache interfaces.Cache) *MaxMemoryCache {
+func NewMaxMemoryCacheWithFIFO(max int64, cache domainCache.Repository) *MaxMemoryCache {
 	return NewMaxMemoryCache(max, cache, NewFIFOPolicy())
 }
 
@@ -90,7 +89,7 @@ func NewMaxMemoryCacheWithFIFO(max int64, cache interfaces.Cache) *MaxMemoryCach
 // 返回值:
 //
 //	*MaxMemoryCache: 新的缓存实例
-func NewMaxMemoryCacheWithRandom(max int64, cache interfaces.Cache) *MaxMemoryCache {
+func NewMaxMemoryCacheWithRandom(max int64, cache domainCache.Repository) *MaxMemoryCache {
 	return NewMaxMemoryCache(max, cache, NewRandomPolicy())
 }
 
@@ -152,7 +151,7 @@ func (m *MaxMemoryCache) Set(ctx context.Context, key string, val []byte,
 //   - 从缓存中获取指定键的值
 //   - 更新键的访问时间
 //   - 处理类型断言错误
-func (m *MaxMemoryCache) Get(ctx context.Context, key string) ([]byte, error) {
+func (m *MaxMemoryCache) Get(ctx context.Context, key string) (any, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -164,11 +163,7 @@ func (m *MaxMemoryCache) Get(ctx context.Context, key string) ([]byte, error) {
 		// 通知策略该键已被访问
 		_ = m.policy.KeyAccessed(ctx, key)
 
-		// 类型断言为字节数组
-		if valBytes, ok := val.([]byte); ok {
-			return valBytes, nil
-		}
-		return nil, errors.New("value is not []byte")
+		return val, nil
 	}
 	return nil, err
 }
@@ -203,18 +198,14 @@ func (m *MaxMemoryCache) Delete(ctx context.Context, key string) error {
 //   - 原子性地获取并删除指定键
 //   - 更新内存使用统计
 //   - 处理类型断言错误
-func (m *MaxMemoryCache) LoadAndDelete(ctx context.Context, key string) ([]byte, error) {
+func (m *MaxMemoryCache) LoadAndDelete(ctx context.Context, key string) (any, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	// 从底层缓存获取并删除值
 	val, err := m.Cache.LoadAndDelete(ctx, key)
 	if err == nil {
-		// 类型断言为字节数组
-		if valBytes, ok := val.([]byte); ok {
-			return valBytes, nil
-		}
-		return nil, errors.New("value is not []byte")
+		return val, nil
 	}
 	return nil, err
 }

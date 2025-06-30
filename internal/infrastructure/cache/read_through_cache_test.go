@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,13 +16,17 @@ type MockCache struct {
 	store         map[string]any
 	getShouldFail bool
 	setShouldFail bool
+	evictedFn     func(string, any)
+	mu            sync.RWMutex
 }
 
 func (m *MockCache) Get(_ context.Context, key string) (any, error) {
 	if m.getShouldFail {
 		return nil, errors.New("mock get error")
 	}
+	m.mu.RLock()
 	val, ok := m.store[key]
+	m.mu.RUnlock()
 	if !ok {
 		return nil, ErrKeyNotFound
 	}
@@ -32,28 +37,34 @@ func (m *MockCache) Set(_ context.Context, key string, value any, _ time.Duratio
 	if m.setShouldFail {
 		return errors.New("mock set error")
 	}
+	m.mu.Lock()
 	m.store[key] = value
+	m.mu.Unlock()
 	return nil
 }
 
 func (m *MockCache) Delete(_ context.Context, key string) error {
+	m.mu.Lock()
 	delete(m.store, key)
+	m.mu.Unlock()
 	return nil
 }
 
 func (m *MockCache) LoadAndDelete(ctx context.Context, key string) (any, error) {
-	val, err := m.Get(ctx, key)
-	if err != nil {
-		return nil, err
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	val, ok := m.store[key]
+	if !ok {
+		return nil, ErrKeyNotFound
 	}
-	if err := m.Delete(ctx, key); err != nil {
-		return nil, err
-	}
+	delete(m.store, key)
 	return val, nil
 }
 
-func (m *MockCache) OnEvicted(func(string, any)) {
-	// 空实现，测试中不需要
+func (m *MockCache) OnEvicted(fn func(string, any)) {
+	m.mu.Lock()
+	m.evictedFn = fn
+	m.mu.Unlock()
 }
 
 // TestReadThroughCache_Get 测试ReadThroughCache的Get方法
@@ -161,7 +172,7 @@ func TestReadThroughCache_Get(t *testing.T) {
 			logFunc, logCalled := tt.setupLogFunc()
 
 			rtCache := &ReadThroughCache{
-				Cache:      mockCache,
+				Repository: mockCache,
 				LoadFunc:   loadFunc,
 				Expiration: time.Minute,
 				logFunc:    logFunc,
@@ -255,14 +266,14 @@ func TestSingleFlight(t *testing.T) {
 			switch tt.cacheType {
 			case "ReadThroughCache":
 				cache = &ReadThroughCache{
-					Cache:      mockCache,
+					Repository: mockCache,
 					LoadFunc:   loadFunc,
 					Expiration: time.Minute,
 					g:          singleflight.Group{},
 				}
 			case "RateLimitReadThroughCache":
 				cache = &RateLimitReadThroughCache{
-					Cache:      mockCache,
+					Repository: mockCache,
 					LoadFunc:   loadFunc,
 					Expiration: time.Minute,
 					g:          singleflight.Group{},
@@ -483,7 +494,7 @@ func TestRateLimitReadThroughCache_Get(t *testing.T) {
 			ctx := tt.setupContext()
 
 			rlCache := &RateLimitReadThroughCache{
-				Cache:      mockCache,
+				Repository: mockCache,
 				LoadFunc:   loadFunc,
 				Expiration: time.Minute,
 			}
@@ -526,7 +537,7 @@ func TestRateLimitReadThroughCache_Get(t *testing.T) {
 func TestReadThroughCache_Get_CacheError(t *testing.T) {
 	mockCache := &MockCache{store: make(map[string]any), getShouldFail: true}
 	rtCache := &ReadThroughCache{
-		Cache: mockCache,
+		Repository: mockCache,
 		LoadFunc: func(ctx context.Context, key string) (any, error) {
 			return "loaded_value", nil
 		},

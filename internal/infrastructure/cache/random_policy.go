@@ -25,13 +25,13 @@ type RandomPolicy struct {
 // 返回值:
 //   - *RandomPolicy: 新的随机策略实例
 func NewRandomPolicy(capacity ...int) *RandomPolicy {
-	cap := 0
+	capacityVal := 0
 	if len(capacity) > 0 && capacity[0] > 0 {
-		cap = capacity[0]
+		capacityVal = capacity[0]
 	}
 
 	return &RandomPolicy{
-		capacity: cap,
+		capacity: capacityVal,
 		keys:     make([]string, 0),
 		keySet:   make(map[string]int),
 		rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -40,7 +40,7 @@ func NewRandomPolicy(capacity ...int) *RandomPolicy {
 
 // KeyAccessed 记录key被访问
 // 随机策略中，只需要记录key的存在，不需要维护访问顺序
-func (r *RandomPolicy) KeyAccessed(ctx context.Context, key string) error {
+func (r *RandomPolicy) KeyAccessed(_ context.Context, key string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -65,7 +65,7 @@ func (r *RandomPolicy) KeyAccessed(ctx context.Context, key string) error {
 
 // Evict 执行淘汰并返回被淘汰的key
 // 随机选择一个key进行淘汰
-func (r *RandomPolicy) Evict(ctx context.Context) (string, error) {
+func (r *RandomPolicy) Evict(context.Context) (string, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -89,7 +89,7 @@ func (r *RandomPolicy) evictInternal() (string, error) {
 }
 
 // Remove 移除指定key
-func (r *RandomPolicy) Remove(ctx context.Context, key string) error {
+func (r *RandomPolicy) Remove(_ context.Context, key string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -120,7 +120,7 @@ func (r *RandomPolicy) removeByIndex(index int) {
 }
 
 // Has 判断key是否存在
-func (r *RandomPolicy) Has(ctx context.Context, key string) (bool, error) {
+func (r *RandomPolicy) Has(_ context.Context, key string) (bool, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
@@ -129,7 +129,7 @@ func (r *RandomPolicy) Has(ctx context.Context, key string) (bool, error) {
 }
 
 // Size 返回当前跟踪的key数量
-func (r *RandomPolicy) Size(ctx context.Context) (int, error) {
+func (r *RandomPolicy) Size(context.Context) (int, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
@@ -137,7 +137,7 @@ func (r *RandomPolicy) Size(ctx context.Context) (int, error) {
 }
 
 // Clear 清空所有key
-func (r *RandomPolicy) Clear(ctx context.Context) error {
+func (r *RandomPolicy) Clear(context.Context) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
