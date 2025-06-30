@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/justinwongcn/hamster/internal/interfaces"
+	domainCache "github.com/justinwongcn/hamster/internal/domain/cache"
 )
 
 // WriteThroughCache 实现写透缓存模式
 // 当写入缓存时，同时写入到持久化存储
 // 确保缓存和存储的数据一致性
 type WriteThroughCache struct {
-	interfaces.Cache
+	domainCache.Repository
 	StoreFunc func(ctx context.Context, key string, val any) error
 }
 
@@ -19,7 +19,7 @@ type WriteThroughCache struct {
 // 当写入被限流时，跳过持久化存储的写入
 // 必须赋值 StoreFunc 字段
 type RateLimitWriteThroughCache struct {
-	interfaces.Cache
+	domainCache.Repository
 	StoreFunc func(ctx context.Context, key string, val any) error
 }
 
@@ -36,7 +36,7 @@ func (r *RateLimitWriteThroughCache) Set(ctx context.Context, key string, val an
 		}
 	}
 	// 写入缓存（无论是否限流都要写入缓存）
-	return r.Cache.Set(ctx, key, val, expiration)
+	return r.Repository.Set(ctx, key, val, expiration)
 }
 
 // Set 实现写透缓存的设置逻辑
@@ -60,5 +60,5 @@ func (w *WriteThroughCache) Set(ctx context.Context, key string, val any, expira
 		return err
 	}
 	// 再写入缓存
-	return w.Cache.Set(ctx, key, val, expiration)
+	return w.Repository.Set(ctx, key, val, expiration)
 }

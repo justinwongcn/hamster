@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	domainCache "github.com/justinwongcn/hamster/internal/domain/cache"
 	"golang.org/x/sync/singleflight"
-
-	"github.com/justinwongcn/hamster/internal/interfaces"
 )
 
 var (
@@ -20,7 +19,7 @@ var (
 // 当缓存未命中时自动从数据源加载数据并更新缓存
 // 使用single flight.Group防止缓存击穿
 type ReadThroughCache struct {
-	interfaces.Cache
+	domainCache.Repository
 	LoadFunc   func(ctx context.Context, key string) (any, error)
 	Expiration time.Duration
 	logFunc    func(format string, args ...any)
@@ -31,7 +30,7 @@ type ReadThroughCache struct {
 // 必须赋值 LoadFunc 和 Expiration 字段
 // Expiration 是缓存过期时间
 type RateLimitReadThroughCache struct {
-	interfaces.Cache
+	domainCache.Repository
 	LoadFunc   func(ctx context.Context, key string) (any, error)
 	Expiration time.Duration
 	g          singleflight.Group
@@ -50,7 +49,7 @@ type RateLimitReadThroughCache struct {
 //   - 优先从缓存获取数据
 //   - 缓存未命中时调用handleCacheMiss处理
 func (r *ReadThroughCache) Get(ctx context.Context, key string) (any, error) {
-	cachedVal, err := r.Cache.Get(ctx, key)
+	cachedVal, err := r.Repository.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrKeyNotFound) {
 			return r.handleCacheMiss(ctx, key)
@@ -63,7 +62,7 @@ func (r *ReadThroughCache) Get(ctx context.Context, key string) (any, error) {
 // Get 实现带限流功能的缓存获取逻辑
 // 当缓存未命中且未被限流时，调用LoadFunc加载数据并更新缓存
 func (r *RateLimitReadThroughCache) Get(ctx context.Context, key string) (any, error) {
-	val, err := r.Cache.Get(ctx, key)
+	val, err := r.Repository.Get(ctx, key)
 	if errors.Is(err, ErrKeyNotFound) && ctx.Value("limited") == nil {
 		// 使用single flight防止缓存击穿
 		loadedVal, loadErr, _ := r.g.Do(key, func() (any, error) {
@@ -73,7 +72,7 @@ func (r *RateLimitReadThroughCache) Get(ctx context.Context, key string) (any, e
 			}
 
 			// 更新缓存
-			if loadErr2 := r.Cache.Set(ctx, key, newVal, r.Expiration); loadErr2 != nil {
+			if loadErr2 := r.Repository.Set(ctx, key, newVal, r.Expiration); loadErr2 != nil {
 				return newVal, fmt.Errorf("%w, 原因：%s", ErrFailedToRefreshCache, loadErr2.Error())
 			}
 			return newVal, nil
@@ -112,7 +111,7 @@ func (r *ReadThroughCache) handleCacheMiss(ctx context.Context, key string) (any
 		}
 
 		// 尝试更新缓存（即使失败也返回加载的值）
-		if setErr := r.Cache.Set(ctx, key, newVal, r.Expiration); setErr != nil {
+		if setErr := r.Repository.Set(ctx, key, newVal, r.Expiration); setErr != nil {
 			if r.logFunc != nil {
 				r.logFunc("刷新缓存失败，键：%s，错误：%v", key, setErr)
 			}
