@@ -33,7 +33,7 @@ func (repo Repository) Set(ctx context.Context, key string, val any, expiration 
 ```go
 err := cache.Set(ctx, "user:123", userData, time.Hour)
 if err != nil {
-log.Printf("设置缓存失败: %v", err)
+    log.Printf("设置缓存失败: %v", err)
 }
 ```
 
@@ -52,11 +52,11 @@ func (repo Repository) Get(ctx context.Context, key string) (any, error)
 ```go
 value, err := cache.Get(ctx, "user:123")
 if err != nil {
-if errors.Is(err, ErrKeyNotFound) {
-// 处理键不存在的情况
-return handleMissingKey()
-}
-return err
+    if errors.Is(err, ErrKeyNotFound) {
+        // 处理键不存在的情况
+        return handleMissingKey()
+    }
+    return err
 }
 ```
 
@@ -84,17 +84,17 @@ func (repo Repository) Stats(ctx context.Context) (map[string]any, error)
 
 ```go
 func (repo ReadThroughRepository) GetWithLoader(
-ctx context.Context,
-key string,
-loader func (ctx context.Context, key string) (any, error)
+    ctx context.Context,
+    key string,
+    loader func(ctx context.Context, key string) (any, error),
 ) (any, error)
 ```
 
 **示例：**
 
 ```go
-user, err := readThroughCache.GetWithLoader(ctx, "user:123", func (ctx context.Context, key string) (any, error) {
-return userService.LoadFromDB(ctx, key)
+user, err := readThroughCache.GetWithLoader(ctx, "user:123", func(ctx context.Context, key string) (any, error) {
+    return userService.LoadFromDB(ctx, key)
 })
 ```
 
@@ -102,11 +102,11 @@ return userService.LoadFromDB(ctx, key)
 
 ```go
 func (repo WriteThroughRepository) SetWithWriter(
-ctx context.Context,
-key string,
-val any,
-expiration time.Duration,
-writer func (ctx context.Context, key string, val any) error
+    ctx context.Context,
+    key string,
+    val any,
+    expiration time.Duration,
+    writer func(ctx context.Context, key string, val any) error,
 ) error
 ```
 
@@ -133,11 +133,11 @@ func (lock DistributedLock) TryLock(ctx context.Context, key string, expiration 
 ```go
 lock, err := lockManager.TryLock(ctx, "resource:123", time.Minute)
 if err != nil {
-if errors.Is(err, ErrFailedToPreemptLock) {
-// 锁被其他进程持有
-return handleLockBusy()
-}
-return err
+    if errors.Is(err, ErrFailedToPreemptLock) {
+        // 锁被其他进程持有
+        return handleLockBusy()
+    }
+    return err
 }
 defer lock.Unlock(ctx)
 ```
@@ -146,11 +146,11 @@ defer lock.Unlock(ctx)
 
 ```go
 func (lock DistributedLock) Lock(
-ctx context.Context,
-key string,
-expiration time.Duration,
-timeout time.Duration,
-retryStrategy RetryStrategy
+    ctx context.Context,
+    key string,
+    expiration time.Duration,
+    timeout time.Duration,
+    retryStrategy RetryStrategy,
 ) (Lock, error)
 ```
 
@@ -165,11 +165,11 @@ lock, err := lockManager.Lock(ctx, "resource:123", time.Minute, 10*time.Second, 
 
 ```go
 func (lock DistributedLock) SingleflightLock(
-ctx context.Context,
-key string,
-expiration time.Duration,
-timeout time.Duration,
-retryStrategy RetryStrategy
+    ctx context.Context,
+    key string,
+    expiration time.Duration,
+    timeout time.Duration,
+    retryStrategy RetryStrategy,
 ) (Lock, error)
 ```
 
@@ -191,11 +191,11 @@ func (lock Lock) AutoRefresh(interval time.Duration, timeout time.Duration) erro
 
 ```go
 // 启动自动续约（异步）
-go func () {
-err := lock.AutoRefresh(30*time.Second, 5*time.Second)
-if err != nil {
-log.Printf("自动续约失败: %v", err)
-}
+go func() {
+    err := lock.AutoRefresh(30*time.Second, 5*time.Second)
+    if err != nil {
+        log.Printf("自动续约失败: %v", err)
+    }
 }()
 ```
 
@@ -242,8 +242,8 @@ hashMap := NewConsistentHashMap(replicas int, hashFunc Hash) *ConsistentHashMap
 hashMap := NewConsistentHashMap(150, nil)
 
 // 使用自定义哈希函数
-customHash := func (data []byte) uint32 {
-return crc32.ChecksumIEEE(data)
+customHash := func(data []byte) uint32 {
+    return crc32.ChecksumIEEE(data)
 }
 hashMap := NewConsistentHashMap(100, customHash)
 ```
@@ -277,7 +277,7 @@ func (m *ConsistentHashMap) Get(key string) (string, error)
 ```go
 server, err := hashMap.Get("user:123")
 if err != nil {
-return err
+    return err
 }
 fmt.Printf("用户分配到服务器: %s\n", server)
 ```
@@ -308,7 +308,7 @@ func (p *SingleflightPeerPicker) PickPeers(key string, count int) ([]Peer, error
 ```go
 peer, err := picker.PickPeer("user:123")
 if err != nil {
-return err
+    return err
 }
 
 fmt.Printf("选中节点: %s (%s)\n", peer.ID(), peer.Address())
@@ -339,7 +339,7 @@ bloomFilter := NewInMemoryBloomFilter(config)
 // 预期1000个元素，1%假阳性率
 config, err := NewBloomFilterConfig(1000, 0.01)
 if err != nil {
-return err
+    return err
 }
 
 bloomFilter := NewInMemoryBloomFilter(config)
@@ -363,15 +363,15 @@ func (bf BloomFilter) HasKey(ctx context.Context, key string) bool
 // 添加元素
 err := bloomFilter.Add(ctx, "user:123")
 if err != nil {
-return err
+    return err
 }
 
 // 检查元素
 exists := bloomFilter.HasKey(ctx, "user:123")
 if exists {
-fmt.Println("元素可能存在")
+    fmt.Println("元素可能存在")
 } else {
-fmt.Println("元素一定不存在")
+    fmt.Println("元素一定不存在")
 }
 ```
 
@@ -387,17 +387,17 @@ func (bf BloomFilter) Stats(ctx context.Context) (BloomFilterStats, error)
 
 ```go
 bloomCache := NewBloomFilterCacheSimple(
-repository Repository,
-bloomFilter BloomFilter,
-loadFunc func (ctx context.Context, key string) (any, error)
+    repository Repository,
+    bloomFilter BloomFilter,
+    loadFunc func(ctx context.Context, key string) (any, error),
 )
 ```
 
 **示例：**
 
 ```go
-loadFunc := func (ctx context.Context, key string) (any, error) {
-return userService.LoadFromDB(ctx, key)
+loadFunc := func(ctx context.Context, key string) (any, error) {
+    return userService.LoadFromDB(ctx, key)
 }
 
 bloomCache := NewBloomFilterCacheSimple(memoryCache, bloomFilter, loadFunc)
@@ -413,23 +413,23 @@ user, err := bloomCache.Get(ctx, "user:123")
 ```go
 // 缓存错误
 var (
-ErrKeyNotFound = errors.New("键不存在")
-ErrInvalidCacheKey = errors.New("无效的缓存键")
-ErrCacheFull            = errors.New("缓存已满")
-ErrFailedToRefreshCache = errors.New("刷新缓存失败")
+    ErrKeyNotFound          = errors.New("键不存在")
+    ErrInvalidCacheKey      = errors.New("无效的缓存键")
+    ErrCacheFull            = errors.New("缓存已满")
+    ErrFailedToRefreshCache = errors.New("刷新缓存失败")
 )
 
 // 锁错误
 var (
-ErrFailedToPreemptLock = errors.New("抢锁失败")
-ErrLockNotHold = errors.New("你没有持有锁")
-ErrLockExpired         = errors.New("锁已过期")
+    ErrFailedToPreemptLock = errors.New("抢锁失败")
+    ErrLockNotHold         = errors.New("你没有持有锁")
+    ErrLockExpired         = errors.New("锁已过期")
 )
 
 // 哈希错误
 var (
-ErrNoPeers = errors.New("没有可用的节点")
-ErrInvalidPeer = errors.New("无效的节点")
+    ErrNoPeers     = errors.New("没有可用的节点")
+    ErrInvalidPeer = errors.New("无效的节点")
 )
 ```
 
@@ -438,17 +438,17 @@ ErrInvalidPeer = errors.New("无效的节点")
 ```go
 value, err := cache.Get(ctx, "key")
 if err != nil {
-switch {
-case errors.Is(err, ErrKeyNotFound):
-// 处理键不存在
-return handleMissingKey()
-case errors.Is(err, context.DeadlineExceeded):
-// 处理超时
-return handleTimeout()
-default:
-// 处理其他错误
-return fmt.Errorf("获取缓存失败: %w", err)
-}
+    switch {
+    case errors.Is(err, ErrKeyNotFound):
+        // 处理键不存在
+        return handleMissingKey()
+    case errors.Is(err, context.DeadlineExceeded):
+        // 处理超时
+        return handleTimeout()
+    default:
+        // 处理其他错误
+        return fmt.Errorf("获取缓存失败: %w", err)
+    }
 }
 ```
 
@@ -470,13 +470,13 @@ value, err := cache.Get(ctx, "key")
 // ✅ 正确：区分不同类型的错误
 value, err := cache.Get(ctx, "key")
 if err != nil {
-if errors.Is(err, ErrKeyNotFound) {
-// 键不存在是正常情况，不需要记录错误日志
-return nil, nil
-}
-// 其他错误需要记录日志
-log.Printf("获取缓存失败: %v", err)
-return nil, err
+    if errors.Is(err, ErrKeyNotFound) {
+        // 键不存在是正常情况，不需要记录错误日志
+        return nil, nil
+    }
+    // 其他错误需要记录日志
+    log.Printf("获取缓存失败: %v", err)
+    return nil, err
 }
 ```
 
@@ -486,12 +486,12 @@ return nil, err
 // ✅ 正确：确保锁被释放
 lock, err := lockManager.TryLock(ctx, "resource", time.Minute)
 if err != nil {
-return err
+    return err
 }
-defer func () {
-if unlockErr := lock.Unlock(ctx); unlockErr != nil {
-log.Printf("释放锁失败: %v", unlockErr)
-}
+defer func() {
+    if unlockErr := lock.Unlock(ctx); unlockErr != nil {
+        log.Printf("释放锁失败: %v", unlockErr)
+    }
 }()
 ```
 
@@ -500,13 +500,13 @@ log.Printf("释放锁失败: %v", unlockErr)
 ```go
 // ✅ 正确：根据业务需求配置参数
 config, err := NewBloomFilterConfig(
-expectedElements, // 根据实际数据量设置
-0.01,             // 1%假阳性率，平衡内存和准确性
+    expectedElements, // 根据实际数据量设置
+    0.01,             // 1%假阳性率，平衡内存和准确性
 )
 
 hashMap := NewConsistentHashMap(
-150, // 虚拟节点数，提升负载均衡
-nil, // 使用默认哈希函数
+    150, // 虚拟节点数，提升负载均衡
+    nil, // 使用默认哈希函数
 )
 ```
 
@@ -514,22 +514,22 @@ nil, // 使用默认哈希函数
 
 ```go
 // 定期获取统计信息
-go func () {
-ticker := time.NewTicker(time.Minute)
-defer ticker.Stop()
+go func() {
+    ticker := time.NewTicker(time.Minute)
+    defer ticker.Stop()
 
-for {
-select {
-case <-ticker.C:
-stats, err := cache.Stats(ctx)
-if err != nil {
-log.Printf("获取统计信息失败: %v", err)
-continue
-}
+    for {
+        select {
+        case <-ticker.C:
+            stats, err := cache.Stats(ctx)
+            if err != nil {
+                log.Printf("获取统计信息失败: %v", err)
+                continue
+            }
 
-// 记录关键指标
-log.Printf("缓存统计: %+v", stats)
-}
-}
+            // 记录关键指标
+            log.Printf("缓存统计: %+v", stats)
+        }
+    }
 }()
 ```
