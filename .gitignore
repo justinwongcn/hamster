@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-*.md
+# *.md  # 注释掉，允许 README.md 等重要文档
 
 # Test binary, built with `go test -c`
 *.test
