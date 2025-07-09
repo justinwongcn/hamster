@@ -312,3 +312,5 @@ go tool cover -html=coverage.out -o coverage.html
 ---
 
 **开始使用 Hamster 构建您的分布式应用吧！** 🚀
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/justinwongcn/hamster)
